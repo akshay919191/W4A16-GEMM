@@ -1,0 +1,93 @@
+# ---- Build output from setup.py / pip install -e . ----
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Compiled extension (the built .so / .pyd that Python imports)
+*.so
+*.pyd
+*.dll
+*.dylib
+
+# Object files and CUDA intermediates
+*.o
+*.obj
+*.a
+*.lib
+*.ninja_deps
+*.ninja_log
+.ninja_deps
+.ninja_log
+build.ninja
+*.ptx
+*.cubin
+*.fatbin
+*.fatbin.c
+*.ii
+*.i
+*.gpu
+*.stub.c
+*.module_id
+*.cudafe1.*
+*.reg.c
+*_dlink.*
+a_dlink.*
+
+# ---- JIT build cache (torch.utils.cpp_extension.load) ----
+.torch_extensions/
+torch_extensions/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# ---- Virtual environments ----
+venv/
+.venv/
+env/
+ENV/
+.conda/
+
+# ---- Profiling / debugging output ----
+*.nsys-rep
+*.ncu-rep
+*.qdrep
+*.sqlite
+cuda-memcheck*.log
+compute-sanitizer*.log
+core
+core.*
+*.log
+
+# ---- Model weights / data (large, don't commit) ----
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.npy
+*.npz
+*.gguf
+data/
+checkpoints/
+weights/
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# ---- Secrets / local config ----
+.env
+*.env.local
