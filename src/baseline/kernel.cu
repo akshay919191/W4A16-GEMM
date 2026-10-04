@@ -16,7 +16,7 @@ __global__ void w4a16_gemv(
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     if (row >= N) return;
 
-    const uint32_t* W_row = W + (size_t)row * (K / 8);   // size_t avoids overflow
+    const uint32_t* W_row = W + (size_t)row * (K / 8);   
     float acc = 0.0f;
 
     for (int k = 0; k < K / 8; k++) {
@@ -51,11 +51,9 @@ torch::Tensor w4a16_gemv_cuda(torch::Tensor W, torch::Tensor A,
     TORCH_CHECK(W.size(1) == K / 8, "W must be [N, K/8]");
     TORCH_CHECK(sW.numel() == N && zW.numel() == N, "sW, zW must be [N]");
 
-    // 2. launch on the tensor's GPU and PyTorch's current stream
     const at::cuda::CUDAGuard guard(W.device());
     auto stream = at::cuda::getCurrentCUDAStream();
 
-    // 3. allocate output
     auto C = torch::empty({N}, A.options());
 
     // 4. launch
