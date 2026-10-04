@@ -16,7 +16,7 @@ nib = torch.stack([(Wi >> (4 * j)) & 0xF for j in range(8)], dim=-1).reshape(N, 
 nib = torch.where(nib >= 8, nib - 16, nib).float()
 ref = ((nib @ A.float()) - zW.float()) * sW.float()
 
-print(W.shape , (N , K // 8) , Wi.shape , out.shape)
+print(W.shape , Wi.shape , out.shape , nib.shape , A.shape)
 
 print((out.float() - ref).abs().max())
 print(torch.allclose(out.float(), ref, rtol=1e-2, atol=1e-1))
