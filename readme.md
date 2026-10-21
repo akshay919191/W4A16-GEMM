@@ -50,14 +50,16 @@ python benchmarks/bench_gemm.py --shape 4096,4096 --shape 8192,4096 --M 1,4,16 -
 
 The checked-in run at [`benchmarks/results/bench-20261021-182748.json`](benchmarks/results/bench-20261021-182748.json) contains 20 rows: four projection dimensions and five batch sizes. Values below summarize the rows for each layer; latency is the measured W4A16 range, speedup compares against fp16 `linear`, and bandwidth is estimated from the benchmark's modeled traffic and latency.
 
-| Projection | N × K | W4A16 latency (µs) | Speedup range | Estimated bandwidth (GB/s) |
+| Projection | N × K | W4A16 latency (µs) | Speedup range | Implied bandwidth* (GB/s) |
 |---|---:|---:|---:|---:|
 | qkv | 6144 × 4096 | 83.7–95.4 | 3.64–4.04× | 139.5–155.3 |
 | o | 4096 × 4096 | 58.7–70.0 | 3.02–3.91× | 127.3–147.7 |
 | gate_up | 28672 × 4096 | 375.5–403.6 | 3.67–3.85× | 152.6–161.5 |
 | down | 4096 × 14336 | 197.9–225.7 | 3.56–3.99× | 136.8–153.2 |
 
-The benchmark's default roofline reference is 144 GB/s, so its reported percentage can exceed 100%. The JSON stores per-row timings and calculated metrics, but does not store the GPU model, software versions, or complete command line. Preserve the benchmark's console header with the JSON when recording an environment-specific result.
+*The benchmark calculates this as modeled bytes divided by elapsed time; it is not a hardware DRAM counter. The run used a 144 GB/s reference, also the RTX 3050 6GB Laptop GPU's theoretical bandwidth (96-bit bus at 12 Gb/s). The maximum implied value is 161.5 GB/s, or 112% of that limit. A DRAM-bound kernel cannot sustain more than physical peak, so this points to a discrepancy in effective-bandwidth estimation or timing—not performance above the roofline. Do not treat the estimate or `pct_peak` as measured DRAM bandwidth. Recheck device SKU, timings, and traffic accounting before making roofline claims. The desktop RTX 3050 6GB is a different SKU: NVIDIA lists its 96-bit interface, and MSI specifies 14 Gb/s memory for its desktop 6GB model (168 GB/s).
+
+The JSON stores per-row timings and calculated metrics, but not the GPU model, software versions, or full command line. The original run was reported as an RTX 3050 6GB Laptop; preserve the benchmark console header with future result files so the hardware and software can be verified. See [RTX 3050 6GB Laptop bandwidth](https://www.notebookcheck.net/NVIDIA-GeForce-RTX-3050-6GB-Laptop-GPU-GPU-Benchmarks-and-Specs.692276.0.html), [NVIDIA's RTX 3050 desktop specifications](https://www.nvidia.com/en-us/geforce/graphics-cards/30-series/rtx-3050/), and [MSI's desktop RTX 3050 6GB specifications](https://www.msi.com/Graphics-Card/GeForce-RTX-3050-LP-6G/Specification).
 
 ## Repository files
 
