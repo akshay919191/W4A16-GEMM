@@ -13,6 +13,14 @@ from .quant import (dequantize_w4, fragment_map, pack_int4, quantize_w4,
 cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a CUDA GPU")
 GS = [64, 128]
 
+# Exercise tile boundaries, odd decode batch sizes, and both representative and
+# full model projection dimensions without making the default matrix enormous.
+DECODE_SHAPES = [
+    (64, 512), (128, 1024), (256, 2048), (512, 4096),
+    (4096, 4096), (6144, 4096), (4096, 14336), (28672, 4096),
+]
+DECODE_BATCHES = [1, 2, 3, 7, 8, 9, 15, 16]
+
 
 def gemm(*a):
     from w4a16_opt import w4a16_gemm
@@ -81,8 +89,8 @@ def test_quantization_sanity(G):
 
 @cuda
 @pytest.mark.parametrize("G", GS)
-@pytest.mark.parametrize("M", [1, 2, 3, 7, 8, 9, 15, 16])
-@pytest.mark.parametrize("N,K", [(64, 512), (128, 1024), (192, 1536), (4096, 4096)])
+@pytest.mark.parametrize("M", DECODE_BATCHES)
+@pytest.mark.parametrize("N,K", DECODE_SHAPES[:4])
 def test_shapes(M, N, K, G):
     x, q, scales, Wp = make_problem(M, N, K, G)
     assert_close(gemm(Wp, x, scales), ref_gemm(x, q, scales, G))
@@ -91,10 +99,40 @@ def test_shapes(M, N, K, G):
 @cuda
 @pytest.mark.parametrize("G", [128])
 @pytest.mark.parametrize("M", [1, 4, 16])
-@pytest.mark.parametrize("N,K", [(6144, 4096), (4096, 4096), (28672, 4096), (4096, 14336)])
+@pytest.mark.parametrize("N,K", DECODE_SHAPES[4:])
 def test_llama3_8b_shapes(M, N, K, G):
     x, q, scales, Wp = make_problem(M, N, K, G)
     assert_close(gemm(Wp, x, scales), ref_gemm(x, q, scales, G))
+
+
+@cuda
+@pytest.mark.parametrize("M", [17, 32, 64, 128, 512, 2048])
+def test_prefill_batch_is_rejected(M):
+    """Document the prefill boundary: this kernel supports decode only."""
+    x, _, scales, Wp = make_problem(M, 64, 512, 64)
+    with pytest.raises(RuntimeError, match="M must be"):
+        gemm(Wp, x, scales)
+
+
+@cuda
+@pytest.mark.parametrize("G", GS)
+@pytest.mark.parametrize("scale_mode", ["tiny", "large", "mixed"])
+def test_hard_scale_and_activation_ranges(G, scale_mode):
+    """Stress fp16 scale rounding and accumulation with wide activation ranges."""
+    M, N, K = 16, 256, 2048
+    x, q, scales, Wp = make_problem(M, N, K, G, seed=23)
+    if scale_mode == "tiny":
+        scales.fill_(2.0 ** -14)
+        x.mul_(128)
+    elif scale_mode == "large":
+        scales.fill_(16.0)
+        x.mul_(8)
+    else:
+        scales[:, ::2] = 2.0 ** -10
+        scales[:, 1::2] = 8.0
+        x[::2].mul_(0.125)
+        x[1::2].mul_(8)
+    assert_close(gemm(Wp, x, scales), ref_gemm(x, q, scales, G), tol=4e-3)
 
 
 @cuda

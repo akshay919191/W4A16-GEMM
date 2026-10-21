@@ -16,6 +16,7 @@ import math
 import os
 import statistics
 import sys
+from datetime import datetime
 
 import torch
 import torch.nn.functional as F
@@ -62,7 +63,13 @@ def main():
     ap.add_argument("--target-mb", type=float, default=128, help="distinct weight bytes to cycle through")
     ap.add_argument("--reps", type=int, default=30)
     ap.add_argument("--md", action="store_true", help="print a markdown table")
-    ap.add_argument("--json", help="also write rows to this file")
+    default_results = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "results",
+        f"bench-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json",
+    )
+    ap.add_argument("--json", nargs="?", const=default_results, default=default_results,
+                    help="write benchmark rows to this JSON file (default: timestamped file in benchmarks/results/)")
     a = ap.parse_args()
 
     shapes = ([(f"{n}x{k}", tuple(map(int, n_k.split(",")))) for n_k in a.shape for n, k in [n_k.split(",")]]
@@ -113,8 +120,11 @@ def main():
         print("  ".join(f"{h:>10}" for h in hdr))
         for r in rows:
             print("  ".join(f"{fmt(c, r[c]):>10}" for c in cols))
-    if a.json:
-        json.dump(rows, open(a.json, "w"), indent=1)
+    os.makedirs(os.path.dirname(os.path.abspath(a.json)), exist_ok=True)
+    with open(a.json, "w", encoding="utf-8") as f:
+        json.dump(rows, f, indent=2)
+        f.write("\n")
+    print(f"\nSaved {len(rows)} benchmark rows to {a.json}")
 
 
 if __name__ == "__main__":
