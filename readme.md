@@ -11,16 +11,25 @@ The vectorized kernel is decode-only: `M` must be 1–16. It does not implement 
 
 ## Environment and build
 
-Use Linux with an NVIDIA GPU, CUDA-enabled PyTorch, and CUDA Toolkit 12.0 or newer (`nvcc` available on `PATH`). PyTorch must match the installed CUDA toolchain. The build selects the visible GPU architecture, or defaults to sm_86 if no GPU is visible.
+The reference environment is Ubuntu 22.04 x86_64, Python 3.10.16, PyTorch 2.7.1 with CUDA 12.6, and NVIDIA CUDA Toolkit 12.6.3. It targets sm_86. You need an NVIDIA driver compatible with CUDA 12.6, `nvcc`, and a CUDA-supported C++ compiler. CUDA 12.6 supports GCC 6.x–13.2 on x86_64. The pinned Python packages are in [`requirements-repro.txt`](requirements-repro.txt); `.python-version` records the Python version.
 
-From the repository root, install test/build tools and build both CUDA extensions in the active Python environment:
+Install CUDA Toolkit 12.6.x on the host first. Then, from the repository root, create an isolated environment and build both extensions:
 
 ```bash
-python -m pip install torch pytest ninja
-python -m pip install -e . --no-build-isolation
+pyenv install 3.10.16  # skip if this Python version is already installed
+pyenv local 3.10.16
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install pip==25.0.1
+python -m pip install -r requirements-repro.txt
+export CUDA_HOME=/usr/local/cuda-12.6
+export TORCH_CUDA_ARCH_LIST=8.6
+nvcc --version
+python -c 'import torch; print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))'
+python -m pip install -e . --no-build-isolation --no-deps
 ```
 
-The editable build compiles `w4a16_opt` from `src/vectorized/` and `w4a16_ext` from `src/baseline/`. If you already have a compatible CUDA-enabled PyTorch installed, avoid replacing it with a different PyTorch build when installing dependencies.
+The editable build compiles `w4a16_opt` from `src/vectorized/` and `w4a16_ext` from `src/baseline/`. Keep the same Python, PyTorch, CUDA Toolkit, compiler, driver, and GPU architecture when comparing results. PyTorch provides the CUDA 12.6 runtime wheel, while the separate Toolkit provides `nvcc` for compiling the extensions.
 
 Run correctness tests from the root:
 
@@ -32,10 +41,11 @@ The GEMM correctness cases execute the CUDA extension on an NVIDIA GPU. Separate
 
 ## Benchmark
 
-Run the default benchmark from the root:
+Run the default benchmark from the root and save both its machine-readable rows and console environment header:
 
 ```bash
-python benchmarks/bench_gemm.py --md
+mkdir -p benchmarks/results
+python benchmarks/bench_gemm.py --md --json benchmarks/results/current-run.json | tee benchmarks/results/current-run.log
 ```
 
 It compares the W4A16 extension with fp16 `torch.nn.functional.linear` over the Llama 3 8B projection dimensions, with `M` in `{1, 2, 4, 8, 16}` and group size 128. Timings use CUDA graphs. The default cycles through at least 128 MiB of packed weights (up to 64 copies). Each run saves its rows as JSON under `benchmarks/results/`. Choose a path with `--json path/to/results.json`.
@@ -76,7 +86,7 @@ The checked-in run at [`benchmarks/results/bench-20261021-182748.json`](benchmar
 
 *The benchmark calculates this as modeled bytes divided by elapsed time; it is not a hardware DRAM counter. The run used a 144 GB/s reference, also the RTX 3050 6GB Laptop GPU's theoretical bandwidth (96-bit bus at 12 Gb/s). The maximum implied value is 161.5 GB/s, or 112% of that limit. A DRAM-bound kernel cannot sustain more than physical peak, so this points to a discrepancy in effective-bandwidth estimation or timing—not performance above the roofline. Do not treat the estimate or `pct_peak` as measured DRAM bandwidth. Recheck device SKU, timings, and traffic accounting before making roofline claims. The desktop RTX 3050 6GB is a different SKU: NVIDIA lists its 96-bit interface, and MSI specifies 14 Gb/s memory for its desktop 6GB model (168 GB/s).
 
-The JSON stores per-row timings and calculated metrics, but not the GPU model, software versions, or full command line. The original run was reported as an RTX 3050 6GB Laptop; preserve the benchmark console header with future result files so the hardware and software can be verified. See [RTX 3050 6GB Laptop bandwidth](https://www.notebookcheck.net/NVIDIA-GeForce-RTX-3050-6GB-Laptop-GPU-GPU-Benchmarks-and-Specs.692276.0.html), [NVIDIA's RTX 3050 desktop specifications](https://www.nvidia.com/en-us/geforce/graphics-cards/30-series/rtx-3050/), and [MSI's desktop RTX 3050 6GB specifications](https://www.msi.com/Graphics-Card/GeForce-RTX-3050-LP-6G/Specification).
+The checked-in JSON predates this pinned environment and does not include GPU or software metadata. Re-run the benchmark with the commands above to save its GPU and software header alongside the results. See [PyTorch's PyTorch 2.7.1 CUDA 12.6 install command](https://pytorch.org/get-started/previous-versions/) and [NVIDIA CUDA Toolkit 12.6 documentation](https://docs.nvidia.com/cuda/archive/12.6.3/).
 
 ## Repository files
 
