@@ -80,6 +80,11 @@ data/
 checkpoints/
 weights/
 
+# Generated benchmark exports; keep the result documented in readme.md.
+*.csv
+*.json
+!benchmarks/results/bench-20261021-182748.json
+
 # ---- Editors / OS ----
 .vscode/
 .idea/

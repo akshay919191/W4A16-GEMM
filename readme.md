@@ -38,13 +38,30 @@ Run the default benchmark from the root:
 python benchmarks/bench_gemm.py --md
 ```
 
-It compares the W4A16 extension with fp16 `torch.nn.functional.linear` over the Llama 3 8B projection dimensions, with `M` in `{1, 2, 4, 8, 16}` and group size 128. Timings use CUDA graphs. The default cycles through 128 MiB of weights; `--target-mb 1` measures a hot-cache case. Each run saves its rows as JSON under `benchmarks/results/`. Choose a path with `--json path/to/results.json`.
+It compares the W4A16 extension with fp16 `torch.nn.functional.linear` over the Llama 3 8B projection dimensions, with `M` in `{1, 2, 4, 8, 16}` and group size 128. Timings use CUDA graphs. The default cycles through at least 128 MiB of packed weights (up to 64 copies). Each run saves its rows as JSON under `benchmarks/results/`. Choose a path with `--json path/to/results.json`.
 
 Other shapes and batches can be selected, for example:
 
 ```bash
 python benchmarks/bench_gemm.py --shape 4096,4096 --shape 8192,4096 --M 1,4,16 --G 64,128 --md
 ```
+
+### Diagnostic runs
+
+Compare output-grid sizes while keeping the weight element count constant (16,777,216 elements in each case). This helps check whether a small number of CTAs limits the smaller-N cases:
+
+```bash
+python benchmarks/bench_gemm.py --shape 2048,8192 --shape 4096,4096 --shape 8192,2048 --M 8 --G 128 --target-mb 128 --reps 50 --md
+```
+
+Compare one packed-weight copy with a larger weight working set for a large layer:
+
+```bash
+python benchmarks/bench_gemm.py --shape 28672,4096 --M 8 --target-mb 1 --reps 50 --md
+python benchmarks/bench_gemm.py --shape 28672,4096 --M 8 --target-mb 128 --reps 50 --md
+```
+
+For this shape, even one packed-weight copy is about 56 MiB, far larger than the laptop GPU's 2 MiB L2 cache. So `--target-mb 1` does **not** make it a hot-cache run; it only reduces the number of distinct copies from three to one. Use hardware counters to determine DRAM traffic. These timing comparisons can show working-set and grid-size effects, but they cannot establish measured bandwidth by themselves.
 
 ## Recorded benchmark
 
