@@ -122,14 +122,23 @@ For this shape, even one packed-weight copy is about 56 MiB, far larger than the
 
 The fresh full run at [`benchmarks/results/baseline-rtx3050-168gbps.json`](benchmarks/results/baseline-rtx3050-168gbps.json) contains 20 rows: four projection dimensions and five batch sizes. After the prefill changes, a decode recheck at [`decode-recheck.json`](benchmarks/results/decode-recheck.json) stayed within 0.44% of that baseline in every row. Values below summarize the baseline run; latency is the measured W4A16 range, speedup compares against fp16 `linear`, and bandwidth is estimated from the benchmark's modeled traffic and latency.
 
-| Projection | N × K | W4A16 latency (µs) | Speedup range | Implied bandwidth* (GB/s) | of 168 GB/s |
-|---|---:|---:|---:|---:|
-| qkv | 6144 × 4096 | 83.6–95.5 | 3.64–3.98× | 139.3–155.5 | 82.9–92.6% |
-| o | 4096 × 4096 | 58.6–70.0 | 3.02–3.91× | 127.3–147.8 | 75.8–88.0% |
-| gate_up | 28672 × 4096 | 375.4–403.6 | 3.67–3.84× | 152.6–161.5 | 90.8–96.1% |
-| down | 4096 × 14336 | 198.2–225.9 | 3.56–4.00× | 136.6–153.0 | 81.3–91.1% |
+| Projection | N × K | W4A16 latency (µs) | Speedup |
+|---|---:|---:|---:|
+| qkv | 6144 × 4096 | 83.6–95.5 | 3.64–3.98× |
+| o | 4096 × 4096 | 58.6–70.0 | 3.02–3.91× |
+| gate_up | 28672 × 4096 | 375.4–403.6 | 3.67–3.84× |
+| down | 4096 × 14336 | 198.2–225.9 | 3.56–4.00× |
 
-*The benchmark's bandwidth is modeled bytes divided by elapsed time, not a hardware DRAM counter. `nvidia-smi` on this laptop reports a maximum memory clock of 7001 MHz. With its 96-bit memory interface and GDDR6's double data rate, that gives about 168 GB/s theoretical peak. The highest modeled value here, 161.5 GB/s, is about 96% of peak. The older checked-in JSON used `--peak-bw 144`, so its `pct_peak` field is relative to 144 GB/s, not the theoretical peak; the fresh run uses `--peak-bw 168`.
+Modeled bandwidth is shown separately so both tables remain readable:
+
+| Projection | Modeled bandwidth (GB/s) | Of 168 GB/s peak |
+|---|---:|---:|
+| qkv | 139.3–155.5 | 82.9–92.6% |
+| o | 127.3–147.8 | 75.8–88.0% |
+| gate_up | 152.6–161.5 | 90.8–96.1% |
+| down | 136.6–153.0 | 81.3–91.1% |
+
+Bandwidth is modeled bytes divided by elapsed time, not a hardware DRAM counter. `nvidia-smi` on this laptop reports a maximum memory clock of 7001 MHz. With its 96-bit memory interface and GDDR6's double data rate, that gives about 168 GB/s theoretical peak. The highest modeled value here, 161.5 GB/s, is about 96% of peak. The older checked-in JSON used `--peak-bw 144`, so its `pct_peak` field is relative to 144 GB/s, not the theoretical peak; the fresh run uses `--peak-bw 168`.
 
 The benchmark prints the GPU, CUDA runtime, PyTorch version, and device details before the table. The fresh JSON stores per-row results; its environment is recorded above. The PyTorch/CUDA wheel combination follows [PyTorch's official installation instructions](https://pytorch.org/get-started/previous-versions/).
 
