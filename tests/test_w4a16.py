@@ -27,7 +27,7 @@ def gemm(*a, **kw):
     return w4a16_gemm(*a, **kw)
 
 
-PREFILL_VARIANTS = [1, 2, 3, 4]      # BM = 16 / 32 / 64 / 128
+PREFILL_VARIANTS = [1, 2, 3, 4]  # BM = 16 / 32 / 64 / 64
 
 
 def make_problem(M, N, K, G, seed=0, w_std=0.02):

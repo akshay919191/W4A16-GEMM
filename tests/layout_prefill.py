@@ -104,7 +104,8 @@ def emulate(Wp, x, scales, N, K, G, BM, BN, WARPS_M, WARPS_N):
     return y
 
 
-CFGS = {1: (16, 64, 1, 4), 2: (32, 128, 1, 8), 3: (64, 128, 2, 4), 4: (128, 128, 2, 4)}
+CFGS = {1: (16, 64, 1, 4), 2: (32, 128, 1, 8), 3: (64, 128, 2, 4),
+        4: (64, 128, 1, 8)}
 # (M, N, K, G): ragged M, N not a multiple of BN / 64, K not a multiple of 512, both group sizes
 CASES = [(1, 16, 64, 64), (5, 48, 192, 64), (17, 80, 256, 64), (33, 144, 640, 128), (70, 208, 384, 64), (130, 272, 256, 128)]
 

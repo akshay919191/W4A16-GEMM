@@ -14,7 +14,7 @@ One entry point, `w4a16_gemm(Wp, x, scales, variant=-1)`, with two kernels behin
 | **decode** (`decode.cuh`) | `M` in 1–16 **and** `N % 64 == 0` **and** `K % 512 == 0` | unchanged from before |
 | **prefill** (`prefill.cuh`) | everything else (any `M >= 1`) | `N % 16 == 0`, `K % 64 == 0` |
 
-Both take fp16 activations and scales, int32 packed weights (the same format, no repacking), and group size 64 or 128 (`K / groups` must be exactly 64 or 128). `variant` is for testing and tuning: `-1` auto, `0` decode kernel, `1..4` force a prefill tile config (`BM` = 16 / 32 / 64 / 128).
+Both take fp16 activations and scales, int32 packed weights (the same format, no repacking), and group size 64 or 128 (`K / groups` must be exactly 64 or 128). `variant` is for testing and tuning: `-1` auto, `0` decode kernel, `1..4` force a prefill tile config (`BM` = 16 / 32 / 64).
 
 The decode algorithm and shape-specific launch configurations are preserved in `decode.cuh`; the new prefill path is selected on the host for batches and dimensions outside the decode contract.
 
@@ -22,14 +22,16 @@ The decode algorithm and shape-specific launch configurations are preserved in `
 
 The packed weight word each lane holds is already an `mma.m16n8k16` A fragment. Prefill swaps the operand roles (tokens become the mma M side, weights the N side). The same eight nibbles then form the B fragments of two n8 tiles, so **the weight format does not change** and the output fragment is already `y[token, n]` (no transpose, no smem reduction). Each CTA computes a `BM x BN` tile over a 3–4 stage `cp.async` pipeline with one `__syncthreads()` per 64-wide k-step; weights are dequantized in registers (one fp16 subtract + one fp16 multiply, bit-identical to the reference). `K` is accumulated sequentially in fp32, so **all four prefill configs produce bit-identical output**, and a row's result does not depend on how many other rows are in the batch (as long as both batches use the prefill path; decode vs prefill differ only by fp32 summation order).
 
-| cfg | tile (BM x BN) | warps | intended range |
+| cfg | tile (BM x BN) | warps (M x N) | layout |
 |---|---|---|---|
-| 1 | 16 x 64 | 1 x 4 | M <= 16 on shapes the decode kernel cannot take (e.g. `K = 11008`) |
-| 2 | 32 x 128 | 1 x 8 | M ~ 17–48 |
-| 3 | 64 x 128 | 2 x 4 | M ~ 48–128 |
-| 4 | 128 x 128 | 2 x 4 | large M |
+| 1 | 16 x 64 | 1 x 4 | small batch |
+| 2 | 32 x 128 | 1 x 8 | small and medium batch |
+| 3 | 64 x 128 | 2 x 4 | two warp groups split across M and N |
+| 4 | 64 x 128 | 1 x 8 | BM=64 with all warps assigned across N |
 
-The host picks the config from a small cost model (tile work, waves over the SM count, occupancy queried once per device). Its constants are **estimates that have not been tuned on hardware**; use `--variant` in the benchmark to check the choice on your GPU.
+For each config, the host probes the supported 2, 3, and 4 stage pipelines and selects the one with the highest resident CTA occupancy; ties favor more stages. On the tested RTX 3050 (G=128), this selects cfg1: 2 stages/10 CTAs per SM, cfg2: 2/4, cfg3: 3/2, cfg4: 3/2. Set `W4A16_DEBUG_PREFILL=1` to print the selected stage, occupancy, and tile config.
+
+On the RTX 3050 only, auto tile routing uses the measured Llama 3 projection sweep. Other devices use the generic occupancy/work estimate, which has not been performance tuned. The RTX-specific route was within 3% of the fastest forced config in 40 of 44 cases in one sweep; the largest gap was 7.1%. These are single-run measurements and show remaining tuning and timing variability. Use `--variant 1..4` to compare all tiles on a different device.
 
 ## Environment and build
 
@@ -61,7 +63,7 @@ python tests/layout_prefill.py
 
 The GEMM correctness cases execute the CUDA extension on an NVIDIA GPU. Separate host-side checks cover packing and layout helpers; they do not exercise the GEMM kernel. Decode and prefill GEMM cases run on the CUDA GPU and are skipped when CUDA is unavailable. The prefill tests cover ragged batches, output and K tails, both group sizes, all forced tile configs, CUDA graph capture, and comparison with the reference GEMM.
 
-Validation on the RTX 3050: both extensions rebuilt successfully, and `conda run -n akku python -m pytest -q tests/test_w4a16.py` reported 420 passed and 12 skipped. The 12 skipped parameter cases use a K dimension that is not divisible by their requested group size. The numpy-only prefill layout emulator and all-config CUDA compile check are also included; see below for their results.
+Validation on the RTX 3050: both extensions rebuilt successfully, and `conda run -n akku python -m pytest -q tests/test_w4a16.py` reported 420 passed and 12 skipped. The 12 skipped parameter cases use a K dimension that is not divisible by their requested group size. `python tests/layout_prefill.py` checked 24 shape/config cases (worst relative error 1.3e-15). The torch-free `sm_86` compile check instantiated every retained prefill config; ptxas reported at most 102 registers per thread and zero spill loads/stores.
 
 ## Benchmark
 
@@ -91,23 +93,7 @@ python benchmarks/bench_gemm.py --shape 4096,4096 --M 17,48,100,256 --variant 2 
 
 Prefill is mostly compute-bound, so read the TFLOP/s columns and the speedup against fp16 `linear`; the GB/s and `% roofline` columns model decode traffic and are not meaningful there.
 
-| M | fp16 linear (µs) | W4A16 auto (µs) | speedup | W4A16 TFLOP/s |
-|---:|---:|---:|---:|---:|
-| 17 | 240.6 | 95.2 | 2.53× | 6.0 |
-| 64 | 309.2 | 198.7 | 1.56× | 10.8 |
-| 256 | 627.7 | 684.0 | 0.92× |
-
-Source: [`benchmarks/results/prefill-auto-rtx3050.json`](benchmarks/results/prefill-auto-rtx3050.json). This run shows that the measured advantage shrinks with batch size and W4A16 is slower at M=256. The GB/s/% roofline fields are modeled using decode-style traffic and should not be used to infer prefill DRAM bandwidth.
-
-Forced prefill tile latency (µs) for the same shape and batch sizes:
-
-| M | cfg 1 (BM=16) | cfg 2 (BM=32) | cfg 3 (BM=64) | cfg 4 (BM=128) | auto |
-|---:|---:|---:|---:|---:|---:|
-| 17 | 97.3 | 96.0 | 194.4 | 365.6 | 95.2 |
-| 64 | 184.3 | **181.2** | 198.6 | 366.6 | 198.7 |
-| 256 | 744.3 | **562.2** | 683.0 | 738.1 | 684.0 |
-
-The results show the current auto cost model misses the faster cfg 2 at M=64 and M=256 on this GPU. The per-config measurements are saved as [`cfg1`](benchmarks/results/prefill-cfg1-rtx3050.json), [`cfg2`](benchmarks/results/prefill-cfg2-rtx3050.json), [`cfg3`](benchmarks/results/prefill-cfg3-rtx3050.json), and [`cfg4`](benchmarks/results/prefill-cfg4-rtx3050.json) JSON files. This is evidence to tune the model for this device; it is not yet a general rule for other shapes or GPUs. All runs use a 1 MiB weight working set and 50 repetitions. Treat them as local reference values, not cross-GPU performance claims.
+The full RTX 3050 prefill sweep covers M={17,32,48,64,100,128,256,512,1024,2048,4096} for qkv, o, gate_up, and down projections. It uses CUDA graph timing, a 128 MiB weight working set, and 30 repetitions. Auto was within 3% of the best forced config in 40/44 rows (worst gap 7.1%). The forced and auto row data are saved in [`sweep-cfg1.json`](benchmarks/results/sweep-cfg1.json), [`sweep-cfg2.json`](benchmarks/results/sweep-cfg2.json), [`sweep-cfg3.json`](benchmarks/results/sweep-cfg3.json), [`sweep-cfg4.json`](benchmarks/results/sweep-cfg4.json), and [`sweep-auto.json`](benchmarks/results/sweep-auto.json). Compare the per-row `w4_us` values when evaluating a routing change. The GB/s and `% roofline` fields model decode traffic and do not estimate prefill DRAM bandwidth.
 
 ### Diagnostic runs
 
@@ -134,7 +120,7 @@ For this shape, even one packed-weight copy is about 56 MiB, far larger than the
 
 ## Recorded benchmark
 
-The fresh full run at [`benchmarks/results/baseline-rtx3050-168gbps.json`](benchmarks/results/baseline-rtx3050-168gbps.json) contains 20 rows: four projection dimensions and five batch sizes. Values below summarize that run; latency is the measured W4A16 range, speedup compares against fp16 `linear`, and bandwidth is estimated from the benchmark's modeled traffic and latency.
+The fresh full run at [`benchmarks/results/baseline-rtx3050-168gbps.json`](benchmarks/results/baseline-rtx3050-168gbps.json) contains 20 rows: four projection dimensions and five batch sizes. After the prefill changes, a decode recheck at [`decode-recheck.json`](benchmarks/results/decode-recheck.json) stayed within 0.44% of that baseline in every row. Values below summarize the baseline run; latency is the measured W4A16 range, speedup compares against fp16 `linear`, and bandwidth is estimated from the benchmark's modeled traffic and latency.
 
 | Projection | N × K | W4A16 latency (µs) | Speedup range | Implied bandwidth* (GB/s) | of 168 GB/s |
 |---|---:|---:|---:|---:|

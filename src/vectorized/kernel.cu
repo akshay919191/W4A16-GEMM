@@ -5,6 +5,8 @@
 #include <cuda_fp16.h>
 #include <stdint.h>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -58,7 +60,7 @@ template <int CFG> struct PfCfg;
 template <> struct PfCfg<1> { static constexpr int BM = 16,  BN = 64,  WM = 1, WN = 4, MINB = 4, ST_MAX = 4; };
 template <> struct PfCfg<2> { static constexpr int BM = 32,  BN = 128, WM = 1, WN = 8, MINB = 2, ST_MAX = 4; };
 template <> struct PfCfg<3> { static constexpr int BM = 64,  BN = 128, WM = 2, WN = 4, MINB = 2, ST_MAX = 4; };
-template <> struct PfCfg<4> { static constexpr int BM = 128, BN = 128, WM = 2, WN = 4, MINB = 1, ST_MAX = 3; };
+template <> struct PfCfg<4> { static constexpr int BM = 64,  BN = 128, WM = 1, WN = 8, MINB = 2, ST_MAX = 4; };
 
 constexpr int PF_NCFG = 4;
 constexpr int PF_BM[PF_NCFG + 1] = {0, PfCfg<1>::BM, PfCfg<2>::BM, PfCfg<3>::BM, PfCfg<4>::BM};
@@ -96,8 +98,18 @@ static PfInfo pf_get_info(int dev, int max_optin) {
     auto it = cache.find(key);
     if (it != cache.end()) return it->second;
     PfInfo info;
-    (void)(pf_probe_st<G, CFG, 4>(max_optin, info) || pf_probe_st<G, CFG, 3>(max_optin, info) ||
-           pf_probe_st<G, CFG, 2>(max_optin, info));
+    // Probe every viable stage count. Prefer the highest occupancy, then the deeper pipeline.
+    // The old short-circuit expression picked ST=4 whenever it fit, even when ST=3 admitted
+    // another resident CTA per SM.
+    PfInfo candidate;
+    if (pf_probe_st<G, CFG, 4>(max_optin, candidate)) info = candidate;
+    candidate = PfInfo{};
+    if (pf_probe_st<G, CFG, 3>(max_optin, candidate) && candidate.occ > info.occ) info = candidate;
+    candidate = PfInfo{};
+    if (pf_probe_st<G, CFG, 2>(max_optin, candidate) && candidate.occ > info.occ) info = candidate;
+    if (std::getenv("W4A16_DEBUG_PREFILL"))
+        std::fprintf(stderr, "prefill G=%d cfg=%d selected_stage=%d occupancy=%d\n", G, CFG,
+                     info.stages, info.occ);
     cache[key] = info;
     return info;
 }
@@ -125,10 +137,8 @@ static void pf_launch(int stages, const uint4* Wp, const half* x, const half* sc
     }
 }
 
-// Pick the config with the lowest modelled time. Per CTA the work is ~ BN * (BM + 16): BM*BN for the
-// tensor-core math plus a BM-independent term for streaming/dequantizing the weight tile. CTAs run in
-// waves of (#SMs * occupancy); a wave of `occ` co-resident CTAs takes ~occ x one CTA. The constant 16 is a
-// guess, NOT a measured value -- override with `variant=` and tune it on your GPU.
+// Generic estimated selector for GPUs without a local profile. This fallback is not a performance
+// claim; use `variant=` to compare configs on an unprofiled device.
 static int pf_select(int M, int N, int num_sms, const PfInfo (&info)[PF_NCFG + 1]) {
     int best = 0;
     double best_cost = std::numeric_limits<double>::infinity();
@@ -145,13 +155,31 @@ static int pf_select(int M, int N, int num_sms, const PfInfo (&info)[PF_NCFG + 1
     return best;
 }
 
+// Measured routing for the RTX 3050 6GB Laptop GPU (sm_86, 20 SMs), fit from the committed Llama 3
+// projection sweep. Config IDs: 1=16x64 1x4, 2=32x128 1x8, 3=64x128 2x4, 4=64x128 1x8.
+// Keep this device-specific: other GPUs use the generic estimate until they have their own sweep.
+static int pf_select_rtx3050(int M, int N, int K) {
+    if (M <= 17) return N >= 16384 ? 2 : 1;
+    if (M <= 32) return (N >= 16384 || K >= 8192) ? 2 : 1;
+    if (M <= 48) return N > 4096 ? 2 : 1;
+    if (M <= 64) return N <= 4096 ? 3 : 2;
+    if (M < 512) {
+        if (N >= 16384) return 3;
+        if (N >= 6000) return 4;
+        return 2;
+    }
+    return 3;
+}
+
 template <int G>
 static void dispatch_prefill(const torch::Tensor& Wp, const torch::Tensor& x, const torch::Tensor& scales,
                              torch::Tensor& y, int M, int N, int K, cudaStream_t stream, int variant) {
-    int dev, max_optin, num_sms;
+    int dev, max_optin, num_sms, major, minor;
     C10_CUDA_CHECK(cudaGetDevice(&dev));
     C10_CUDA_CHECK(cudaDeviceGetAttribute(&max_optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev));
     C10_CUDA_CHECK(cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, dev));
+    C10_CUDA_CHECK(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev));
+    C10_CUDA_CHECK(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, dev));
 
     PfInfo info[PF_NCFG + 1];
     info[1] = pf_get_info<G, 1>(dev, max_optin);
@@ -160,10 +188,17 @@ static void dispatch_prefill(const torch::Tensor& Wp, const torch::Tensor& x, co
     info[4] = pf_get_info<G, 4>(dev, max_optin);
 
     int cfg = variant;                                   // 1..4 forced, or -1 = auto
-    if (cfg < 0) cfg = pf_select(M, N, num_sms, info);
+    if (cfg < 0) {
+        const bool profiled_rtx3050 = major == 8 && minor == 6 && num_sms == 20 && max_optin == 101376;
+        const int profiled_cfg = (profiled_rtx3050 && M >= 17) ? pf_select_rtx3050(M, N, K) : 0;
+        cfg = (profiled_cfg > 0 && info[profiled_cfg].ok) ? profiled_cfg : pf_select(M, N, num_sms, info);
+    }
     TORCH_CHECK(cfg >= 1 && cfg <= PF_NCFG && info[cfg].ok,
                 "no prefill configuration fits (shared memory limit ", max_optin, " B, M=", M, ")");
     TORCH_CHECK(((M + PF_BM[cfg] - 1) / PF_BM[cfg]) <= 65535, "M too large for prefill config ", cfg);
+    if (std::getenv("W4A16_DEBUG_PREFILL"))
+        std::fprintf(stderr, "prefill dispatch G=%d M=%d N=%d K=%d cfg=%d occ=%d stage=%d\n",
+                     G, M, N, K, cfg, info[cfg].occ, info[cfg].stages);
 
     const uint4* wp = reinterpret_cast<const uint4*>(Wp.data_ptr<int32_t>());
     const half*  xp = reinterpret_cast<const half*>(x.data_ptr<at::Half>());

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure achievable DRAM bandwidth (use this, not the spec sheet, as the roofline denominator).
 
-    python bench/measure_bw.py            # then:  python bench/bench_gemm.py --peak-bw <GB/s printed>
+    python benchmarks/measure_bw.py            # then:  python benchmarks/bench_gemm.py --peak-bw <GB/s printed>
 """
 import argparse
 

@@ -63,7 +63,7 @@ def main():
     ap.add_argument("--prefill", action="store_true", help="use prefill batch sizes 32,64,128,256,512,1024,2048,4096")
     ap.add_argument("--variant", type=int, default=-1, help="-1 auto, 0 decode kernel, 1..4 prefill tile configs")
     ap.add_argument("--G", default="128")
-    ap.add_argument("--peak-bw", type=float, default=144.0, help="GB/s roofline (measure with measure_bw.py)")
+    ap.add_argument("--peak-bw", type=float, default=144.0, help="GB/s roofline (measure with benchmarks/measure_bw.py)")
     ap.add_argument("--target-mb", type=float, default=128, help="distinct weight bytes to cycle through")
     ap.add_argument("--reps", type=int, default=30)
     ap.add_argument("--md", action="store_true", help="print a markdown table")
