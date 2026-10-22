@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark the W4A16 decode GEMM against fp16 cuBLAS and the memory roofline.
+"""Benchmark the W4A16 GEMM (decode fast path and tiled prefill) against fp16 cuBLAS and the memory roofline.
 
 Method: each timed unit is a CUDA graph that launches the op over several *distinct* weight copies
 (total >= --target-mb) back-to-back, so weights always stream from DRAM instead of L2, and there is no
@@ -7,6 +7,8 @@ Python/launch overhead in the measurement. Reported time = graph time / launches
 Weights are random bits: runtime does not depend on values; correctness lives in tests/.
 
     python bench/bench_gemm.py                               # Llama-3-8B layers, M in 1,2,4,8,16
+    python bench/bench_gemm.py --prefill --md                # M in 32..4096 (prefill kernel; compare TFLOP/s)
+    python bench/bench_gemm.py --M 17,64,256 --variant 3     # force one prefill tile config (1..4) or 0 = decode
     python bench/bench_gemm.py --peak-bw 130 --md > results.md
     python bench/bench_gemm.py --shape 4096,4096 --M 1 --G 128 --target-mb 1   # hot-L2 (1 copy)
 """
@@ -57,7 +59,9 @@ def traffic_bytes(M, N, K, G):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shape", action="append", help="N,K (repeatable). Default: Llama-3-8B layers")
-    ap.add_argument("--M", default="1,2,4,8,16")
+    ap.add_argument("--M", default=None, help="comma list of batch sizes (default 1,2,4,8,16; 32..4096 with --prefill)")
+    ap.add_argument("--prefill", action="store_true", help="use prefill batch sizes 32,64,128,256,512,1024,2048,4096")
+    ap.add_argument("--variant", type=int, default=-1, help="-1 auto, 0 decode kernel, 1..4 prefill tile configs")
     ap.add_argument("--G", default="128")
     ap.add_argument("--peak-bw", type=float, default=144.0, help="GB/s roofline (measure with measure_bw.py)")
     ap.add_argument("--target-mb", type=float, default=128, help="distinct weight bytes to cycle through")
@@ -74,7 +78,8 @@ def main():
 
     shapes = ([(f"{n}x{k}", tuple(map(int, n_k.split(",")))) for n_k in a.shape for n, k in [n_k.split(",")]]
               if a.shape else list(LLAMA3_8B.items()))
-    Ms, Gs = [int(v) for v in a.M.split(",")], [int(v) for v in a.G.split(",")]
+    m_list = a.M or ("32,64,128,256,512,1024,2048,4096" if a.prefill else "1,2,4,8,16")
+    Ms, Gs = [int(v) for v in m_list.split(",")], [int(v) for v in a.G.split(",")]
     dev = "cuda"
     p = torch.cuda.get_device_properties(0)
     print(f"# {p.name}  sm_{p.major}{p.minor}  SMs={p.multi_processor_count}  "
@@ -92,7 +97,7 @@ def main():
             for M in Ms:
                 x = torch.randn(M, K, device=dev, dtype=torch.half)
                 try:
-                    t4, t4min = graph_time_us([(lambda w=w: w4a16_gemm(w, x, sc)) for w in Wp], a.reps)
+                    t4, t4min = graph_time_us([(lambda w=w: w4a16_gemm(w, x, sc, variant=a.variant)) for w in Wp], a.reps)
                 except RuntimeError as e:
                     print(f"# skip {name} M={M} G={G}: {str(e).splitlines()[0]}")
                     continue
@@ -102,15 +107,19 @@ def main():
                 gbs = by / (t4 * 1e-6) / 1e9
                 rows.append(dict(layer=name, N=N, K=K, M=M, G=G, fp16_us=t16, w4_us=t4, w4_min_us=t4min,
                                  speedup=t16 / t4, gbps=gbs, pct_peak=100 * gbs / a.peak_bw,
+                                 tflops=2 * M * N * K / (t4 * 1e-6) / 1e12,
+                                 fp16_tflops=2 * M * N * K / (t16 * 1e-6) / 1e12,
                                  ideal_us=by / (a.peak_bw * 1e9) * 1e6,
                                  ideal_speedup=(N * K * 2 + M * K * 2 + M * N * 2) / by))
             del Wp
         del W16
         torch.cuda.empty_cache()
 
-    cols = ["layer", "N", "K", "G", "M", "fp16_us", "w4_us", "speedup", "ideal_speedup", "gbps", "pct_peak"]
-    hdr = ["layer", "N", "K", "G", "M", "fp16 µs", "W4A16 µs", "speedup", "ideal ×", "GB/s", "% roofline"]
-    fmt = lambda c, v: (f"{v:.1f}" if c in ("fp16_us", "w4_us", "gbps", "pct_peak") else
+    cols = ["layer", "N", "K", "G", "M", "fp16_us", "w4_us", "speedup", "ideal_speedup", "gbps", "pct_peak",
+            "fp16_tflops", "tflops"]
+    hdr = ["layer", "N", "K", "G", "M", "fp16 µs", "W4A16 µs", "speedup", "ideal ×", "GB/s", "% roofline",
+           "fp16 TFLOP/s", "W4A16 TFLOP/s"]
+    fmt = lambda c, v: (f"{v:.1f}" if c in ("fp16_us", "w4_us", "gbps", "pct_peak", "fp16_tflops", "tflops") else
                         f"{v:.2f}" if c in ("speedup", "ideal_speedup") else str(v))
     if a.md:
         print("| " + " | ".join(hdr) + " |\n|" + "---|" * len(hdr))

@@ -1,8 +1,8 @@
---index-url https://download.pytorch.org/whl/cu126
+--index-url https://download.pytorch.org/whl/cu118
 --extra-index-url https://pypi.org/simple
 
-torch==2.7.1+cu126
-pytest==8.3.5
-ninja==1.11.1.4
-setuptools==75.8.0
-wheel==0.45.1
+torch==2.7.1+cu118
+pytest==9.1.1
+ninja==1.13.0
+setuptools==84.0.0
+wheel==0.48.0

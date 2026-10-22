@@ -1,4 +1,4 @@
-"""Correctness tests for the W4A16 decode GEMM.
+"""Correctness tests for the W4A16 GEMM (decode fast path for M<=16, tiled prefill for any M).
 
     pytest -q tests/                      # everything (GPU tests skip without CUDA)
     pytest -q tests/ -k "not llama"       # skip the big shapes
@@ -22,9 +22,12 @@ DECODE_SHAPES = [
 DECODE_BATCHES = [1, 2, 3, 7, 8, 9, 15, 16]
 
 
-def gemm(*a):
+def gemm(*a, **kw):
     from w4a16_opt import w4a16_gemm
-    return w4a16_gemm(*a)
+    return w4a16_gemm(*a, **kw)
+
+
+PREFILL_VARIANTS = [1, 2, 3, 4]      # BM = 16 / 32 / 64 / 128
 
 
 def make_problem(M, N, K, G, seed=0, w_std=0.02):
@@ -105,13 +108,91 @@ def test_llama3_8b_shapes(M, N, K, G):
     assert_close(gemm(Wp, x, scales), ref_gemm(x, q, scales, G))
 
 
+# Prefill: M is arbitrary; N only needs % 16 and K % 64 (decode needs N % 64, K % 512).
+PREFILL_M = [17, 31, 32, 33, 63, 64, 65, 100, 127, 128, 129, 300, 512, 1000]
+RAGGED = [(16, 64), (48, 192), (80, 640), (208, 384), (272, 1152)]     # N % 64 != 0 and/or K % 512 != 0
+
+
 @cuda
-@pytest.mark.parametrize("M", [17, 32, 64, 128, 512, 2048])
-def test_prefill_batch_is_rejected(M):
-    """Document the prefill boundary: this kernel supports decode only."""
-    x, _, scales, Wp = make_problem(M, 64, 512, 64)
-    with pytest.raises(RuntimeError, match="M must be"):
-        gemm(Wp, x, scales)
+@pytest.mark.parametrize("G", GS)
+@pytest.mark.parametrize("M", PREFILL_M)
+@pytest.mark.parametrize("N,K", DECODE_SHAPES[:4])
+def test_prefill_auto(M, N, K, G):
+    x, q, scales, Wp = make_problem(M, N, K, G)
+    assert_close(gemm(Wp, x, scales), ref_gemm(x, q, scales, G))
+
+
+@cuda
+@pytest.mark.parametrize("G", GS)
+@pytest.mark.parametrize("M", [1, 3, 16, 17, 70, 200])
+@pytest.mark.parametrize("N,K", RAGGED)
+def test_ragged_shapes_auto(M, N, K, G):
+    """Shapes the decode kernel rejects (e.g. Llama-2-7B down_proj K=11008 is not a multiple of 512)."""
+    if K % G:
+        pytest.skip("K must be a multiple of the group size")
+    x, q, scales, Wp = make_problem(M, N, K, G)
+    assert_close(gemm(Wp, x, scales), ref_gemm(x, q, scales, G))
+
+
+@cuda
+@pytest.mark.parametrize("variant", PREFILL_VARIANTS)
+@pytest.mark.parametrize("G", GS)
+@pytest.mark.parametrize("M", [1, 7, 16, 17, 33, 129])
+@pytest.mark.parametrize("N,K", [(64, 512), (208, 384), (512, 4096)])
+def test_forced_prefill_variants(variant, M, N, K, G):
+    """Every tile config must be correct for every M (incl. M < BM and M % BM != 0) and N tails."""
+    if K % G:
+        pytest.skip("K must be a multiple of the group size")
+    x, q, scales, Wp = make_problem(M, N, K, G)
+    assert_close(gemm(Wp, x, scales, variant=variant), ref_gemm(x, q, scales, G))
+
+
+@cuda
+@pytest.mark.parametrize("G", GS)
+def test_prefill_variants_bitwise_equal(G):
+    """K is accumulated in the same sequential order by every prefill config -> identical bits."""
+    x, q, scales, Wp = make_problem(200, 384, 2048, G, seed=5)
+    ys = [gemm(Wp, x, scales, variant=v) for v in PREFILL_VARIANTS]
+    for y in ys[1:]:
+        assert torch.equal(ys[0], y)
+
+
+@cuda
+@pytest.mark.parametrize("G", GS)
+def test_prefill_rows_independent_of_batch(G):
+    """Row i of the output must not depend on the other rows (padding rows included)."""
+    x, q, scales, Wp = make_problem(150, 256, 1024, G, seed=9)
+    full = gemm(Wp, x, scales)
+    for m in (17, 40, 64, 99):
+        assert torch.equal(gemm(Wp, x[:m].contiguous(), scales), full[:m])
+
+
+@cuda
+@pytest.mark.parametrize("G", [128])
+@pytest.mark.parametrize("M", [17, 128, 1024])
+@pytest.mark.parametrize("N,K", DECODE_SHAPES[4:7])
+def test_llama3_8b_prefill_shapes(M, N, K, G):
+    x, q, scales, Wp = make_problem(M, N, K, G)
+    assert_close(gemm(Wp, x, scales), ref_gemm(x, q, scales, G))
+
+
+@cuda
+def test_decode_variant_matches_prefill():
+    """Decode (split-K over warps) and prefill (sequential K) differ only by fp32 summation order."""
+    x, q, scales, Wp = make_problem(8, 1024, 2048, 128)
+    ref = ref_gemm(x, q, scales, 128)
+    assert_close(gemm(Wp, x, scales, variant=0), ref)
+    assert_close(gemm(Wp, x, scales, variant=3), ref)
+
+
+@cuda
+def test_decode_variant_rejects_unsupported_shapes():
+    x, q, scales, Wp = make_problem(32, 64, 512, 64)
+    with pytest.raises(RuntimeError, match="decode kernel needs"):
+        gemm(Wp, x, scales, variant=0)
+    x, q, scales, Wp = make_problem(4, 80, 640, 64)
+    with pytest.raises(RuntimeError, match="decode kernel needs"):
+        gemm(Wp, x, scales, variant=0)
 
 
 @cuda
@@ -132,7 +213,9 @@ def test_hard_scale_and_activation_ranges(G, scale_mode):
         scales[:, 1::2] = 8.0
         x[::2].mul_(0.125)
         x[1::2].mul_(8)
-    assert_close(gemm(Wp, x, scales), ref_gemm(x, q, scales, G), tol=4e-3)
+    ref = ref_gemm(x, q, scales, G)
+    for v in [-1] + PREFILL_VARIANTS:
+        assert_close(gemm(Wp, x, scales, variant=v), ref, tol=4e-3)
 
 
 @cuda
@@ -148,8 +231,9 @@ def test_onehot_k_mapping(G):
         x = torch.zeros(len(chunk), K, dtype=torch.half, device="cuda")
         for m, k in enumerate(chunk):
             x[m, k] = 1
-        y = gemm(Wp, x, scales)
-        assert torch.equal(y, Wd[:, chunk].t().contiguous()), f"k-mapping wrong for k in {chunk}"
+        for v in [-1] + PREFILL_VARIANTS:
+            y = gemm(Wp, x, scales, variant=v)
+            assert torch.equal(y, Wd[:, chunk].t().contiguous()), f"k-mapping wrong for k in {chunk}, variant {v}"
 
 
 @cuda
@@ -178,7 +262,7 @@ def test_deterministic():
 
 
 @cuda
-@pytest.mark.parametrize("M", [1, 12])
+@pytest.mark.parametrize("M", [1, 12, 40, 300])
 def test_cuda_graph_capture(M):
     """The inference engine will call this inside CUDA graphs."""
     x, q, scales, Wp = make_problem(M, 512, 1024, 128)
@@ -211,11 +295,11 @@ def test_rejects_bad_inputs():
         gemm(Wp.cpu(), x.cpu(), s.cpu())
     with pytest.raises(RuntimeError, match="contiguous"):
         gemm(Wp, torch.empty(512, 2, dtype=torch.half, device="cuda").t(), s)
-    with pytest.raises(RuntimeError, match="M must be"):
-        gemm(*args(M=17))
-    with pytest.raises(RuntimeError, match="multiple of 512"):
-        gemm(*args(K=256))
+    with pytest.raises(RuntimeError, match="variant"):
+        gemm(Wp, x, s, variant=7)
     with pytest.raises(RuntimeError, match="multiple of 64"):
-        gemm(*args(N=32))
+        gemm(Wp[: 64 * 32 // 8], torch.zeros(2, 32, dtype=torch.half, device="cuda"), s[:1, :64].contiguous())
+    with pytest.raises(RuntimeError, match="multiple of 16"):
+        gemm(Wp[: 24 * 512 // 8], x, s[:, :24].contiguous())
     with pytest.raises(RuntimeError, match="unsupported group size"):
         gemm(*args(G=32))

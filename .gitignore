@@ -84,6 +84,8 @@ weights/
 *.csv
 *.json
 !benchmarks/results/bench-20261021-182748.json
+!benchmarks/results/baseline-rtx3050-168gbps.json
+!benchmarks/results/prefill-*-rtx3050.json
 
 # ---- Editors / OS ----
 .vscode/

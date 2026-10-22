@@ -1,0 +1,6 @@
+name: w4a16
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10.22
+  - pip=26.0.1
