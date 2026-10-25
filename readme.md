@@ -73,7 +73,7 @@ Run the three-backend benchmark from the repository root:
 
 The default run compares PyTorch fp16 linear, the CUDA W4A16 extension, and the Triton W4A16 kernel across the four Llama 3 8B projection shapes and M in {1, 2, 4, 8, 16}. Both W4 kernels use the same quantized weights, converted to the layout each kernel expects. Timings use CUDA graphs and cycle through a 128 MiB weight working set, with 30 repetitions.
 
-Each run writes a timestamped JSON result and an SVG graph under benchmarks/results. The graph plots TFLOP/s against batch size for all three backends, with one panel per projection. TFLOP/s uses 2*M*N*K / elapsed_time. Pass --json path.json and --plot path.svg to choose output paths.
+Each run writes a timestamped JSON result and an SVG graph under benchmarks/results. The graph is a four-panel grouped bar chart, one panel per projection, comparing all three backends at the largest requested batch size. The saved run uses M=16. TFLOP/s uses 2*M*N*K / elapsed_time. Pass --json path.json and --plot path.svg to choose output paths.
 
 Use --shape N,K (repeatable), --M, --G, --target-mb, and --reps to change the run:
 

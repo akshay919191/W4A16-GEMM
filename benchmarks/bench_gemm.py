@@ -111,91 +111,62 @@ def load_weights(N, K, G, target_mb, device):
 
 
 def write_tflops_svg(path, rows, gpu_name):
-    layers = []
-    for row in rows:
-        if row["layer"] not in layers:
-            layers.append(row["layer"])
-    width = 1080
-    panel_height = 250
-    top = 110
-    height = top + panel_height * len(layers) + 34
-    left, right = 100, 1035
-    plot_top_offset, plot_height = 56, 150
+    layers = list(dict.fromkeys(row["layer"] for row in rows))
+    largest_m = max(row["M"] for row in rows)
+    columns = 2
+    panel_width, panel_height = 540, 330
+    top = 112
+    panel_rows = math.ceil(len(layers) / columns)
+    width = panel_width * columns
+    height = top + panel_height * panel_rows + 20
     svg = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="white"/>',
-        '<style>text{font-family:Arial,Helvetica,sans-serif;fill:#1f2937}.small{font-size:12px}.title{font-size:22px;font-weight:bold}.panel{font-size:15px;font-weight:bold}</style>',
-        '<text x="40" y="36" class="title">W4A16 GEMM performance</text>',
-        f'<text x="40" y="59" class="small">{html.escape(gpu_name)} · TFLOP/s = 2MNK / elapsed time</text>',
+        '<style>text{font-family:Arial,Helvetica,sans-serif;fill:#1f2937}.small{font-size:12px}.title{font-size:22px;font-weight:bold}.panel{font-size:15px;font-weight:bold}.value{font-size:12px;font-weight:bold}</style>',
+        '<text x="36" y="34" class="title">W4A16 GEMM — grouped TFLOP/s</text>',
+        f'<text x="36" y="56" class="small">{html.escape(gpu_name)} · largest measured batch M={largest_m} · 2MNK / elapsed time</text>',
     ]
-    legend_x = 40
+    legend_x = 36
     for label, _, color in BACKENDS:
-        svg.append(f'<line x1="{legend_x}" y1="83" x2="{legend_x + 24}" y2="83" stroke="{color}" stroke-width="3"/>')
-        svg.append(f'<circle cx="{legend_x + 12}" cy="83" r="4" fill="{color}"/>')
-        svg.append(f'<text x="{legend_x + 31}" y="87" class="small">{html.escape(label)}</text>')
-        legend_x += 170
+        svg.append(f'<rect x="{legend_x}" y="76" width="13" height="13" rx="2" fill="{color}"/>')
+        svg.append(f'<text x="{legend_x + 20}" y="87" class="small">{html.escape(label)}</text>')
+        legend_x += 185
 
     for panel_index, layer in enumerate(layers):
-        panel_y = top + panel_index * panel_height
-        group = sorted((row for row in rows if row["layer"] == layer), key=lambda row: row["M"])
-        max_value = max(
-            (row[key] for row in group for _, key, _ in BACKENDS if row.get(key) is not None),
-            default=1.0,
-        )
-        y_max = max(1.0, max_value * 1.12)
-        plot_top = panel_y + plot_top_offset
-        plot_bottom = plot_top + plot_height
-        svg.append(f'<text x="{left}" y="{panel_y + 20}" class="panel">{html.escape(layer)}  (N×K = {group[0]["N"]}×{group[0]["K"]})</text>')
-        svg.append(f'<line x1="{left}" y1="{plot_top}" x2="{left}" y2="{plot_bottom}" stroke="#374151"/>')
-        svg.append(f'<line x1="{left}" y1="{plot_bottom}" x2="{right}" y2="{plot_bottom}" stroke="#374151"/>')
-        svg.append(f'<text x="24" y="{plot_top + plot_height / 2}" class="small" transform="rotate(-90 24 {plot_top + plot_height / 2})">TFLOP/s</text>')
+        x0 = (panel_index % columns) * panel_width
+        y0 = top + (panel_index // columns) * panel_height
+        data = next(row for row in rows if row["layer"] == layer and row["M"] == largest_m)
+        plot_left = x0 + 78
+        plot_right = x0 + panel_width - 28
+        plot_top = y0 + 54
+        plot_bottom = y0 + 258
+        plot_height = plot_bottom - plot_top
+        max_value = max(data[key] for _, key, _ in BACKENDS)
+        y_max = max(1.0, max_value * 1.15)
+        svg.append(f'<text x="{x0 + 22}" y="{y0 + 25}" class="panel">{html.escape(layer)}  (N×K = {data["N"]}×{data["K"]})</text>')
+        svg.append(f'<line x1="{plot_left}" y1="{plot_top}" x2="{plot_left}" y2="{plot_bottom}" stroke="#374151"/>')
+        svg.append(f'<line x1="{plot_left}" y1="{plot_bottom}" x2="{plot_right}" y2="{plot_bottom}" stroke="#374151"/>')
+        svg.append(f'<text x="{x0 + 26}" y="{plot_top + plot_height / 2}" class="small" transform="rotate(-90 {x0 + 26} {plot_top + plot_height / 2})">TFLOP/s</text>')
         for tick in range(5):
             value = y_max * tick / 4
             y = plot_bottom - plot_height * tick / 4
-            svg.append(f'<line x1="{left}" y1="{y:.1f}" x2="{right}" y2="{y:.1f}" stroke="#e5e7eb"/>')
-            svg.append(f'<text x="{left - 12}" y="{y + 4:.1f}" text-anchor="end" class="small">{value:.1f}</text>')
+            svg.append(f'<line x1="{plot_left}" y1="{y:.1f}" x2="{plot_right}" y2="{y:.1f}" stroke="#e5e7eb"/>')
+            svg.append(f'<text x="{plot_left - 10}" y="{y + 4:.1f}" text-anchor="end" class="small">{value:.1f}</text>')
 
-        m_values = [row["M"] for row in group]
-        min_m, max_m = min(m_values), max(m_values)
-        log_min, log_max = math.log2(min_m), math.log2(max_m)
-        for row in group:
-            if log_max == log_min:
-                x = (left + right) / 2
-            else:
-                x = left + (math.log2(row["M"]) - log_min) / (log_max - log_min) * (right - left)
-            svg.append(f'<line x1="{x:.1f}" y1="{plot_bottom}" x2="{x:.1f}" y2="{plot_bottom + 4}" stroke="#374151"/>')
-            svg.append(f'<text x="{x:.1f}" y="{plot_bottom + 18}" text-anchor="middle" class="small">{row["M"]}</text>')
-
-        for _, key, color in BACKENDS:
-            points = []
-            for row in group:
-                value = row.get(key)
-                if value is None:
-                    points.append(None)
-                    continue
-                if log_max == log_min:
-                    x = (left + right) / 2
-                else:
-                    x = left + (math.log2(row["M"]) - log_min) / (log_max - log_min) * (right - left)
-                y = plot_bottom - (value / y_max) * plot_height
-                points.append((x, y, value))
-            segment = []
-            segments = []
-            for point in points:
-                if point is None:
-                    if segment:
-                        segments.append(segment)
-                        segment = []
-                else:
-                    segment.append(point)
-            if segment:
-                segments.append(segment)
-            for segment in segments:
-                coords = " ".join(f"{x:.1f},{y:.1f}" for x, y, _ in segment)
-                svg.append(f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="2.5"/>')
-                for x, y, value in segment:
-                    svg.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="{color}"><title>{value:.3f} TFLOP/s</title></circle>')
-        svg.append(f'<text x="{(left + right) / 2}" y="{plot_bottom + 36}" text-anchor="middle" class="small">Batch size M (log₂ spacing)</text>')
+        bar_width = 72
+        bar_gap = 34
+        total_width = len(BACKENDS) * bar_width + (len(BACKENDS) - 1) * bar_gap
+        bar_x = plot_left + (plot_right - plot_left - total_width) / 2
+        for index, (label, key, color) in enumerate(BACKENDS):
+            value = data[key]
+            bar_height = value / y_max * plot_height
+            x = bar_x + index * (bar_width + bar_gap)
+            y = plot_bottom - bar_height
+            svg.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width}" height="{bar_height:.1f}" rx="3" fill="{color}"/>')
+            svg.append(f'<text x="{x + bar_width / 2:.1f}" y="{y - 7:.1f}" text-anchor="middle" class="value">{value:.2f}</text>')
+            short_label = label.split()[0]
+            svg.append(f'<text x="{x + bar_width / 2:.1f}" y="{plot_bottom + 20}" text-anchor="middle" class="small">{html.escape(short_label)}</text>')
+        svg.append(f'<text x="{(plot_left + plot_right) / 2:.1f}" y="{plot_bottom + 43}" text-anchor="middle" class="small">M = {largest_m}</text>')
 
     svg.append("</svg>")
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
