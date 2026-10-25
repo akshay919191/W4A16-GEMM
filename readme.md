@@ -69,15 +69,15 @@ Validation on the RTX 3050: both extensions rebuilt successfully, and `conda run
 
 Run the three-backend benchmark from the repository root:
 
-    python benchmarks/bench_gemm.py --md
+    conda run -n akku python benchmarks/bench_gemm.py --md
 
 The default run compares PyTorch fp16 linear, the CUDA W4A16 extension, and the Triton W4A16 kernel across the four Llama 3 8B projection shapes and M in {1, 2, 4, 8, 16}. Both W4 kernels use the same quantized weights, converted to the layout each kernel expects. Timings use CUDA graphs and cycle through a 128 MiB weight working set, with 30 repetitions.
 
-Each run writes a timestamped JSON result and an SVG graph under benchmarks/results. The graph is a four-panel grouped bar chart, one panel per projection. Each batch group has three bars for PyTorch, CUDA, and Triton; it shows only the two largest requested batch sizes (M=8 and M=16 in the saved run). TFLOP/s uses 2*M*N*K / elapsed_time. Pass --json path.json and --plot path.svg to choose output paths.
+Each run writes timestamped JSON results and a PNG graph under benchmarks/results. The graph has four panels, one per projection, with grouped PyTorch, CUDA, and Triton bars for the three largest requested batch sizes. The saved run shows M=4, 8, and 16. TFLOP/s uses 2*M*N*K / elapsed_time. Pass --json path.json and --plot path.png to choose output paths.
 
 Use --shape N,K (repeatable), --M, --G, --target-mb, and --reps to change the run:
 
-    python benchmarks/bench_gemm.py --shape 4096,4096 --shape 8192,4096 --M 1,4,16,64,256 --G 64 --reps 50 --md
+    conda run -n akku python benchmarks/bench_gemm.py --shape 4096,4096 --shape 8192,4096 --M 1,4,16,64,256 --G 64 --reps 50 --md
 
 The Triton launcher is also exposed as a Python function:
 
@@ -90,9 +90,9 @@ The Triton function expects fp16 CUDA activations and a W4Weights value returned
 
 ### Three-backend RTX 3050 run
 
-The measured run is saved as [JSON results](benchmarks/results/three-backend-rtx3050-20261025.json), with its [TFLOP/s graph](benchmarks/results/three-backend-rtx3050-20261025-grouped.svg). It contains 20 rows across four projection shapes and M in {1, 2, 4, 8, 16}. Across those rows, measured throughput ranged from 0.12 to 2.54 TFLOP/s for PyTorch fp16, 0.57 to 9.34 TFLOP/s for CUDA W4A16, and 0.37 to 6.66 TFLOP/s for Triton W4A16.
+The measured run is saved as [JSON results](benchmarks/results/three-backend-rtx3050-20261025.json), with its [TFLOP/s graph](benchmarks/results/three-backend-rtx3050-20261025-grouped.png). It contains 20 rows across four projection shapes and M in {1, 2, 4, 8, 16}. Across those rows, measured throughput ranged from 0.12 to 2.54 TFLOP/s for PyTorch fp16, 0.57 to 9.34 TFLOP/s for CUDA W4A16, and 0.37 to 6.66 TFLOP/s for Triton W4A16.
 
-![TFLOP/s comparison across PyTorch, CUDA, and Triton](benchmarks/results/three-backend-rtx3050-20261025-grouped.svg)
+![TFLOP/s comparison across PyTorch, CUDA, and Triton](benchmarks/results/three-backend-rtx3050-20261025-grouped.png)
 
 ### Previously recorded CUDA benchmark
 

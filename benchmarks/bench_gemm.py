@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Compare PyTorch fp16 GEMM with the CUDA and Triton W4A16 kernels."""
 import argparse
-import html
 import json
 import math
 import os
@@ -110,76 +109,58 @@ def load_weights(N, K, G, target_mb, device):
     return torch_weights, cuda_weights, cuda_scales, triton_weight_copies
 
 
-def write_tflops_svg(path, rows, gpu_name):
+def write_tflops_chart(path, rows, gpu_name):
     layers = list(dict.fromkeys(row["layer"] for row in rows))
-    batch_sizes = sorted({row["M"] for row in rows})[-2:]
+    batch_sizes = sorted({row["M"] for row in rows})[-3:]
+    os.environ.setdefault("MPLCONFIGDIR", "/tmp/w4a16-matplotlib")
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    colors = ["#138b7d", "#2f6db3", "#df812d"]
     columns = 2
-    panel_width, panel_height = 540, 330
-    top = 112
     panel_rows = math.ceil(len(layers) / columns)
-    width = panel_width * columns
-    height = top + panel_height * panel_rows + 20
-    svg = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-        '<rect width="100%" height="100%" fill="white"/>',
-        '<style>text{font-family:Arial,Helvetica,sans-serif;fill:#1f2937}.small{font-size:12px}.title{font-size:22px;font-weight:bold}.panel{font-size:15px;font-weight:bold}.value{font-size:12px;font-weight:bold}</style>',
-        '<text x="36" y="34" class="title">W4A16 GEMM — grouped TFLOP/s</text>',
-        f'<text x="36" y="56" class="small">{html.escape(gpu_name)} · largest measured batches M={", ".join(map(str, batch_sizes))} · 2MNK / elapsed time</text>',
-    ]
-    legend_x = 36
-    for label, _, color in BACKENDS:
-        svg.append(f'<rect x="{legend_x}" y="76" width="13" height="13" rx="2" fill="{color}"/>')
-        svg.append(f'<text x="{legend_x + 20}" y="87" class="small">{html.escape(label)}</text>')
-        legend_x += 185
+    fig, axes = plt.subplots(panel_rows, columns, figsize=(13, 4.4 * panel_rows), squeeze=False)
 
     for panel_index, layer in enumerate(layers):
-        x0 = (panel_index % columns) * panel_width
-        y0 = top + (panel_index // columns) * panel_height
-        data_by_m = {
-            m: next(row for row in rows if row["layer"] == layer and row["M"] == m)
-            for m in batch_sizes
-        }
+        ax = axes[panel_index // columns][panel_index % columns]
+        layer_rows = {row["M"]: row for row in rows if row["layer"] == layer}
         shape = next(row for row in rows if row["layer"] == layer)
-        plot_left = x0 + 78
-        plot_right = x0 + panel_width - 28
-        plot_top = y0 + 54
-        plot_bottom = y0 + 258
-        plot_height = plot_bottom - plot_top
-        max_value = max(data[key] for data in data_by_m.values() for _, key, _ in BACKENDS)
-        y_max = max(1.0, max_value * 1.15)
-        svg.append(f'<text x="{x0 + 22}" y="{y0 + 25}" class="panel">{html.escape(layer)}  (N×K = {shape["N"]}×{shape["K"]})</text>')
-        svg.append(f'<line x1="{plot_left}" y1="{plot_top}" x2="{plot_left}" y2="{plot_bottom}" stroke="#374151"/>')
-        svg.append(f'<line x1="{plot_left}" y1="{plot_bottom}" x2="{plot_right}" y2="{plot_bottom}" stroke="#374151"/>')
-        svg.append(f'<text x="{x0 + 26}" y="{plot_top + plot_height / 2}" class="small" transform="rotate(-90 {x0 + 26} {plot_top + plot_height / 2})">TFLOP/s</text>')
-        for tick in range(5):
-            value = y_max * tick / 4
-            y = plot_bottom - plot_height * tick / 4
-            svg.append(f'<line x1="{plot_left}" y1="{y:.1f}" x2="{plot_right}" y2="{y:.1f}" stroke="#e5e7eb"/>')
-            svg.append(f'<text x="{plot_left - 10}" y="{y + 4:.1f}" text-anchor="end" class="small">{value:.1f}</text>')
+        positions = list(range(len(batch_sizes)))
+        bar_width = 0.23
+        offsets = [(index - (len(colors) - 1) / 2) * bar_width for index in range(len(colors))]
 
-        bar_width = 42
-        bar_gap = 7
-        group_gap = 32
-        group_width = len(BACKENDS) * bar_width + (len(BACKENDS) - 1) * bar_gap
-        total_width = len(batch_sizes) * group_width + (len(batch_sizes) - 1) * group_gap
-        group_x = plot_left + (plot_right - plot_left - total_width) / 2
-        for m in batch_sizes:
-            data = data_by_m[m]
-            for index, (_, key, color) in enumerate(BACKENDS):
-                value = data[key]
-                bar_height = value / y_max * plot_height
-                x = group_x + index * (bar_width + bar_gap)
-                y = plot_bottom - bar_height
-                svg.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width}" height="{bar_height:.1f}" rx="2" fill="{color}"/>')
-                svg.append(f'<text x="{x + bar_width / 2:.1f}" y="{y - 7:.1f}" text-anchor="middle" class="value">{value:.1f}</text>')
-            svg.append(f'<text x="{group_x + group_width / 2:.1f}" y="{plot_bottom + 20}" text-anchor="middle" class="small">M={m}</text>')
-            group_x += group_width + group_gap
-        svg.append(f'<text x="{(plot_left + plot_right) / 2:.1f}" y="{plot_bottom + 43}" text-anchor="middle" class="small">Batch size</text>')
+        for backend_index, ((label, key, _), color) in enumerate(zip(BACKENDS, colors)):
+            values = [layer_rows[m][key] for m in batch_sizes]
+            ax.bar(
+                [position + offsets[backend_index] for position in positions],
+                values,
+                width=bar_width,
+                color=color,
+                label=label,
+            )
 
-    svg.append("</svg>")
+        ax.set_title(f'{layer}  (N × K = {shape["N"]:,} × {shape["K"]:,})')
+        ax.set_ylabel("TFLOP/s")
+        ax.set_xlabel("Batch size M")
+        ax.set_xticks(positions, [f"{m:,}" for m in batch_sizes])
+        ax.set_axisbelow(True)
+        ax.grid(axis="y", color="#d9d9d9", linewidth=0.8)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+    for panel_index in range(len(layers), panel_rows * columns):
+        axes[panel_index // columns][panel_index % columns].set_visible(False)
+
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.suptitle("W4A16 GEMM performance", fontsize=17, y=0.995)
+    fig.text(0.5, 0.945, f"{gpu_name} · largest batch sizes M={', '.join(map(str, batch_sizes))}", ha="center")
+    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 0.895), ncol=3, frameon=False)
+    fig.tight_layout(rect=(0.035, 0.025, 0.985, 0.85), h_pad=2.0, w_pad=1.4)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as file:
-        file.write("\n".join(svg) + "\n")
+    fig.savefig(path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
 
 
 def main():
@@ -199,7 +180,7 @@ def main():
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
     json_path = args.json or os.path.join(results_dir, f"three-backend-{stamp}.json")
-    plot_path = args.plot or os.path.splitext(json_path)[0] + "-grouped.svg"
+    plot_path = args.plot or os.path.splitext(json_path)[0] + "-grouped.png"
     shapes = (
         [(f"{int(n)}x{int(k)}", (int(n), int(k))) for n, k in (value.split(",") for value in args.shape)]
         if args.shape
@@ -281,13 +262,14 @@ def main():
             "M": Ms,
             "timing": "CUDA graph median; per-operation time with distinct weight copies",
         },
+        "python_executable": sys.executable,
         "rows": rows,
         "plot": os.path.basename(plot_path),
     }
     with open(json_path, "w", encoding="utf-8") as file:
         json.dump(result, file, indent=2)
         file.write("\n")
-    write_tflops_svg(plot_path, rows, gpu_name)
+    write_tflops_chart(plot_path, rows, gpu_name)
 
     headers = ["Layer", "M", "PyTorch TFLOP/s", "CUDA TFLOP/s", "Triton TFLOP/s"]
     if args.md:
