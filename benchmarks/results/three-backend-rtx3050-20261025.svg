@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1144" viewBox="0 0 1080 1144">
+<rect width="100%" height="100%" fill="white"/>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#1f2937}.small{font-size:12px}.title{font-size:22px;font-weight:bold}.panel{font-size:15px;font-weight:bold}</style>
+<text x="40" y="36" class="title">W4A16 GEMM performance</text>
+<text x="40" y="59" class="small">NVIDIA GeForce RTX 3050 6GB Laptop GPU · TFLOP/s = 2MNK / elapsed time</text>
+<line x1="40" y1="83" x2="64" y2="83" stroke="#2563eb" stroke-width="3"/>
+<circle cx="52" cy="83" r="4" fill="#2563eb"/>
+<text x="71" y="87" class="small">PyTorch fp16</text>
+<line x1="210" y1="83" x2="234" y2="83" stroke="#ea580c" stroke-width="3"/>
+<circle cx="222" cy="83" r="4" fill="#ea580c"/>
+<text x="241" y="87" class="small">CUDA W4A16</text>
+<line x1="380" y1="83" x2="404" y2="83" stroke="#16a34a" stroke-width="3"/>
+<circle cx="392" cy="83" r="4" fill="#16a34a"/>
+<text x="411" y="87" class="small">Triton W4A16</text>
+<text x="100" y="130" class="panel">qkv  (N×K = 6144×4096)</text>
+<line x1="100" y1="166" x2="100" y2="316" stroke="#374151"/>
+<line x1="100" y1="316" x2="1035" y2="316" stroke="#374151"/>
+<text x="24" y="241.0" class="small" transform="rotate(-90 24 241.0)">TFLOP/s</text>
+<line x1="100" y1="316.0" x2="1035" y2="316.0" stroke="#e5e7eb"/>
+<text x="88" y="320.0" text-anchor="end" class="small">0.0</text>
+<line x1="100" y1="278.5" x2="1035" y2="278.5" stroke="#e5e7eb"/>
+<text x="88" y="282.5" text-anchor="end" class="small">2.3</text>
+<line x1="100" y1="241.0" x2="1035" y2="241.0" stroke="#e5e7eb"/>
+<text x="88" y="245.0" text-anchor="end" class="small">4.7</text>
+<line x1="100" y1="203.5" x2="1035" y2="203.5" stroke="#e5e7eb"/>
+<text x="88" y="207.5" text-anchor="end" class="small">7.0</text>
+<line x1="100" y1="166.0" x2="1035" y2="166.0" stroke="#e5e7eb"/>
+<text x="88" y="170.0" text-anchor="end" class="small">9.4</text>
+<line x1="100.0" y1="316" x2="100.0" y2="320" stroke="#374151"/>
+<text x="100.0" y="334" text-anchor="middle" class="small">1</text>
+<line x1="333.8" y1="316" x2="333.8" y2="320" stroke="#374151"/>
+<text x="333.8" y="334" text-anchor="middle" class="small">2</text>
+<line x1="567.5" y1="316" x2="567.5" y2="320" stroke="#374151"/>
+<text x="567.5" y="334" text-anchor="middle" class="small">4</text>
+<line x1="801.2" y1="316" x2="801.2" y2="320" stroke="#374151"/>
+<text x="801.2" y="334" text-anchor="middle" class="small">8</text>
+<line x1="1035.0" y1="316" x2="1035.0" y2="320" stroke="#374151"/>
+<text x="1035.0" y="334" text-anchor="middle" class="small">16</text>
+<polyline points="100.0,313.4 333.8,311.2 567.5,306.5 801.2,297.0 1035.0,278.8" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="100.0" cy="313.4" r="4" fill="#2563eb"><title>0.162 TFLOP/s</title></circle>
+<circle cx="333.8" cy="311.2" r="4" fill="#2563eb"><title>0.300 TFLOP/s</title></circle>
+<circle cx="567.5" cy="306.5" r="4" fill="#2563eb"><title>0.597 TFLOP/s</title></circle>
+<circle cx="801.2" cy="297.0" r="4" fill="#2563eb"><title>1.187 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="278.8" r="4" fill="#2563eb"><title>2.329 TFLOP/s</title></circle>
+<polyline points="100.0,306.4 333.8,296.9 567.5,278.2 801.2,242.3 1035.0,182.1" fill="none" stroke="#ea580c" stroke-width="2.5"/>
+<circle cx="100.0" cy="306.4" r="4" fill="#ea580c"><title>0.602 TFLOP/s</title></circle>
+<circle cx="333.8" cy="296.9" r="4" fill="#ea580c"><title>1.197 TFLOP/s</title></circle>
+<circle cx="567.5" cy="278.2" r="4" fill="#ea580c"><title>2.365 TFLOP/s</title></circle>
+<circle cx="801.2" cy="242.3" r="4" fill="#ea580c"><title>4.611 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="182.1" r="4" fill="#ea580c"><title>8.379 TFLOP/s</title></circle>
+<polyline points="100.0,309.5 333.8,303.1 567.5,290.1 801.2,264.7 1035.0,214.9" fill="none" stroke="#16a34a" stroke-width="2.5"/>
+<circle cx="100.0" cy="309.5" r="4" fill="#16a34a"><title>0.405 TFLOP/s</title></circle>
+<circle cx="333.8" cy="303.1" r="4" fill="#16a34a"><title>0.809 TFLOP/s</title></circle>
+<circle cx="567.5" cy="290.1" r="4" fill="#16a34a"><title>1.619 TFLOP/s</title></circle>
+<circle cx="801.2" cy="264.7" r="4" fill="#16a34a"><title>3.210 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="214.9" r="4" fill="#16a34a"><title>6.322 TFLOP/s</title></circle>
+<text x="567.5" y="352" text-anchor="middle" class="small">Batch size M (log₂ spacing)</text>
+<text x="100" y="380" class="panel">o  (N×K = 4096×4096)</text>
+<line x1="100" y1="416" x2="100" y2="566" stroke="#374151"/>
+<line x1="100" y1="566" x2="1035" y2="566" stroke="#374151"/>
+<text x="24" y="491.0" class="small" transform="rotate(-90 24 491.0)">TFLOP/s</text>
+<line x1="100" y1="566.0" x2="1035" y2="566.0" stroke="#e5e7eb"/>
+<text x="88" y="570.0" text-anchor="end" class="small">0.0</text>
+<line x1="100" y1="528.5" x2="1035" y2="528.5" stroke="#e5e7eb"/>
+<text x="88" y="532.5" text-anchor="end" class="small">2.1</text>
+<line x1="100" y1="491.0" x2="1035" y2="491.0" stroke="#e5e7eb"/>
+<text x="88" y="495.0" text-anchor="end" class="small">4.3</text>
+<line x1="100" y1="453.5" x2="1035" y2="453.5" stroke="#e5e7eb"/>
+<text x="88" y="457.5" text-anchor="end" class="small">6.4</text>
+<line x1="100" y1="416.0" x2="1035" y2="416.0" stroke="#e5e7eb"/>
+<text x="88" y="420.0" text-anchor="end" class="small">8.6</text>
+<line x1="100.0" y1="566" x2="100.0" y2="570" stroke="#374151"/>
+<text x="100.0" y="584" text-anchor="middle" class="small">1</text>
+<line x1="333.8" y1="566" x2="333.8" y2="570" stroke="#374151"/>
+<text x="333.8" y="584" text-anchor="middle" class="small">2</text>
+<line x1="567.5" y1="566" x2="567.5" y2="570" stroke="#374151"/>
+<text x="567.5" y="584" text-anchor="middle" class="small">4</text>
+<line x1="801.2" y1="566" x2="801.2" y2="570" stroke="#374151"/>
+<text x="801.2" y="584" text-anchor="middle" class="small">8</text>
+<line x1="1035.0" y1="566" x2="1035.0" y2="570" stroke="#374151"/>
+<text x="1035.0" y="584" text-anchor="middle" class="small">16</text>
+<polyline points="100.0,563.2 333.8,560.9 567.5,554.8 801.2,543.7 1035.0,521.7" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="100.0" cy="563.2" r="4" fill="#2563eb"><title>0.161 TFLOP/s</title></circle>
+<circle cx="333.8" cy="560.9" r="4" fill="#2563eb"><title>0.289 TFLOP/s</title></circle>
+<circle cx="567.5" cy="554.8" r="4" fill="#2563eb"><title>0.642 TFLOP/s</title></circle>
+<circle cx="801.2" cy="543.7" r="4" fill="#2563eb"><title>1.279 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="521.7" r="4" fill="#2563eb"><title>2.533 TFLOP/s</title></circle>
+<polyline points="100.0,556.0 333.8,546.2 567.5,526.9 801.2,489.8 1035.0,432.1" fill="none" stroke="#ea580c" stroke-width="2.5"/>
+<circle cx="100.0" cy="556.0" r="4" fill="#ea580c"><title>0.572 TFLOP/s</title></circle>
+<circle cx="333.8" cy="546.2" r="4" fill="#ea580c"><title>1.131 TFLOP/s</title></circle>
+<circle cx="567.5" cy="526.9" r="4" fill="#ea580c"><title>2.241 TFLOP/s</title></circle>
+<circle cx="801.2" cy="489.8" r="4" fill="#ea580c"><title>4.360 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="432.1" r="4" fill="#ea580c"><title>7.665 TFLOP/s</title></circle>
+<polyline points="100.0,559.5 333.8,553.0 567.5,540.3 801.2,514.4 1035.0,466.6" fill="none" stroke="#16a34a" stroke-width="2.5"/>
+<circle cx="100.0" cy="559.5" r="4" fill="#16a34a"><title>0.373 TFLOP/s</title></circle>
+<circle cx="333.8" cy="553.0" r="4" fill="#16a34a"><title>0.742 TFLOP/s</title></circle>
+<circle cx="567.5" cy="540.3" r="4" fill="#16a34a"><title>1.471 TFLOP/s</title></circle>
+<circle cx="801.2" cy="514.4" r="4" fill="#16a34a"><title>2.953 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="466.6" r="4" fill="#16a34a"><title>5.686 TFLOP/s</title></circle>
+<text x="567.5" y="602" text-anchor="middle" class="small">Batch size M (log₂ spacing)</text>
+<text x="100" y="630" class="panel">gate_up  (N×K = 28672×4096)</text>
+<line x1="100" y1="666" x2="100" y2="816" stroke="#374151"/>
+<line x1="100" y1="816" x2="1035" y2="816" stroke="#374151"/>
+<text x="24" y="741.0" class="small" transform="rotate(-90 24 741.0)">TFLOP/s</text>
+<line x1="100" y1="816.0" x2="1035" y2="816.0" stroke="#e5e7eb"/>
+<text x="88" y="820.0" text-anchor="end" class="small">0.0</text>
+<line x1="100" y1="778.5" x2="1035" y2="778.5" stroke="#e5e7eb"/>
+<text x="88" y="782.5" text-anchor="end" class="small">2.6</text>
+<line x1="100" y1="741.0" x2="1035" y2="741.0" stroke="#e5e7eb"/>
+<text x="88" y="745.0" text-anchor="end" class="small">5.2</text>
+<line x1="100" y1="703.5" x2="1035" y2="703.5" stroke="#e5e7eb"/>
+<text x="88" y="707.5" text-anchor="end" class="small">7.8</text>
+<line x1="100" y1="666.0" x2="1035" y2="666.0" stroke="#e5e7eb"/>
+<text x="88" y="670.0" text-anchor="end" class="small">10.5</text>
+<line x1="100.0" y1="816" x2="100.0" y2="820" stroke="#374151"/>
+<text x="100.0" y="834" text-anchor="middle" class="small">1</text>
+<line x1="333.8" y1="816" x2="333.8" y2="820" stroke="#374151"/>
+<text x="333.8" y="834" text-anchor="middle" class="small">2</text>
+<line x1="567.5" y1="816" x2="567.5" y2="820" stroke="#374151"/>
+<text x="567.5" y="834" text-anchor="middle" class="small">4</text>
+<line x1="801.2" y1="816" x2="801.2" y2="820" stroke="#374151"/>
+<text x="801.2" y="834" text-anchor="middle" class="small">8</text>
+<line x1="1035.0" y1="816" x2="1035.0" y2="820" stroke="#374151"/>
+<text x="1035.0" y="834" text-anchor="middle" class="small">16</text>
+<polyline points="100.0,814.3 333.8,811.4 567.5,806.8 801.2,797.6 1035.0,779.6" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="100.0" cy="814.3" r="4" fill="#2563eb"><title>0.118 TFLOP/s</title></circle>
+<circle cx="333.8" cy="811.4" r="4" fill="#2563eb"><title>0.323 TFLOP/s</title></circle>
+<circle cx="567.5" cy="806.8" r="4" fill="#2563eb"><title>0.643 TFLOP/s</title></circle>
+<circle cx="801.2" cy="797.6" r="4" fill="#2563eb"><title>1.281 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="779.6" r="4" fill="#2563eb"><title>2.535 TFLOP/s</title></circle>
+<polyline points="100.0,807.0 333.8,798.2 567.5,780.7 801.2,746.1 1035.0,682.1" fill="none" stroke="#ea580c" stroke-width="2.5"/>
+<circle cx="100.0" cy="807.0" r="4" fill="#ea580c"><title>0.626 TFLOP/s</title></circle>
+<circle cx="333.8" cy="798.2" r="4" fill="#ea580c"><title>1.244 TFLOP/s</title></circle>
+<circle cx="567.5" cy="780.7" r="4" fill="#ea580c"><title>2.459 TFLOP/s</title></circle>
+<circle cx="801.2" cy="746.1" r="4" fill="#ea580c"><title>4.876 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="682.1" r="4" fill="#ea580c"><title>9.340 TFLOP/s</title></circle>
+<polyline points="100.0,809.9 333.8,803.8 567.5,791.7 801.2,767.8 1035.0,720.5" fill="none" stroke="#16a34a" stroke-width="2.5"/>
+<circle cx="100.0" cy="809.9" r="4" fill="#16a34a"><title>0.425 TFLOP/s</title></circle>
+<circle cx="333.8" cy="803.8" r="4" fill="#16a34a"><title>0.848 TFLOP/s</title></circle>
+<circle cx="567.5" cy="791.7" r="4" fill="#16a34a"><title>1.693 TFLOP/s</title></circle>
+<circle cx="801.2" cy="767.8" r="4" fill="#16a34a"><title>3.363 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="720.5" r="4" fill="#16a34a"><title>6.657 TFLOP/s</title></circle>
+<text x="567.5" y="852" text-anchor="middle" class="small">Batch size M (log₂ spacing)</text>
+<text x="100" y="880" class="panel">down  (N×K = 4096×14336)</text>
+<line x1="100" y1="916" x2="100" y2="1066" stroke="#374151"/>
+<line x1="100" y1="1066" x2="1035" y2="1066" stroke="#374151"/>
+<text x="24" y="991.0" class="small" transform="rotate(-90 24 991.0)">TFLOP/s</text>
+<line x1="100" y1="1066.0" x2="1035" y2="1066.0" stroke="#e5e7eb"/>
+<text x="88" y="1070.0" text-anchor="end" class="small">0.0</text>
+<line x1="100" y1="1028.5" x2="1035" y2="1028.5" stroke="#e5e7eb"/>
+<text x="88" y="1032.5" text-anchor="end" class="small">2.3</text>
+<line x1="100" y1="991.0" x2="1035" y2="991.0" stroke="#e5e7eb"/>
+<text x="88" y="995.0" text-anchor="end" class="small">4.7</text>
+<line x1="100" y1="953.5" x2="1035" y2="953.5" stroke="#e5e7eb"/>
+<text x="88" y="957.5" text-anchor="end" class="small">7.0</text>
+<line x1="100" y1="916.0" x2="1035" y2="916.0" stroke="#e5e7eb"/>
+<text x="88" y="920.0" text-anchor="end" class="small">9.3</text>
+<line x1="100.0" y1="1066" x2="100.0" y2="1070" stroke="#374151"/>
+<text x="100.0" y="1084" text-anchor="middle" class="small">1</text>
+<line x1="333.8" y1="1066" x2="333.8" y2="1070" stroke="#374151"/>
+<text x="333.8" y="1084" text-anchor="middle" class="small">2</text>
+<line x1="567.5" y1="1066" x2="567.5" y2="1070" stroke="#374151"/>
+<text x="567.5" y="1084" text-anchor="middle" class="small">4</text>
+<line x1="801.2" y1="1066" x2="801.2" y2="1070" stroke="#374151"/>
+<text x="801.2" y="1084" text-anchor="middle" class="small">8</text>
+<line x1="1035.0" y1="1066" x2="1035.0" y2="1070" stroke="#374151"/>
+<text x="1035.0" y="1084" text-anchor="middle" class="small">16</text>
+<polyline points="100.0,1063.4 333.8,1061.2 567.5,1056.5 801.2,1047.1 1035.0,1028.4" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="100.0" cy="1063.4" r="4" fill="#2563eb"><title>0.163 TFLOP/s</title></circle>
+<circle cx="333.8" cy="1061.2" r="4" fill="#2563eb"><title>0.295 TFLOP/s</title></circle>
+<circle cx="567.5" cy="1056.5" r="4" fill="#2563eb"><title>0.590 TFLOP/s</title></circle>
+<circle cx="801.2" cy="1047.1" r="4" fill="#2563eb"><title>1.176 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="1028.4" r="4" fill="#2563eb"><title>2.338 TFLOP/s</title></circle>
+<polyline points="100.0,1056.5 333.8,1047.0 567.5,1028.3 801.2,991.7 1035.0,932.1" fill="none" stroke="#ea580c" stroke-width="2.5"/>
+<circle cx="100.0" cy="1056.5" r="4" fill="#ea580c"><title>0.592 TFLOP/s</title></circle>
+<circle cx="333.8" cy="1047.0" r="4" fill="#ea580c"><title>1.179 TFLOP/s</title></circle>
+<circle cx="567.5" cy="1028.3" r="4" fill="#ea580c"><title>2.339 TFLOP/s</title></circle>
+<circle cx="801.2" cy="991.7" r="4" fill="#ea580c"><title>4.613 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="932.1" r="4" fill="#ea580c"><title>8.316 TFLOP/s</title></circle>
+<polyline points="100.0,1060.0 333.8,1054.0 567.5,1041.8 801.2,1018.3 1035.0,972.1" fill="none" stroke="#16a34a" stroke-width="2.5"/>
+<circle cx="100.0" cy="1060.0" r="4" fill="#16a34a"><title>0.374 TFLOP/s</title></circle>
+<circle cx="333.8" cy="1054.0" r="4" fill="#16a34a"><title>0.748 TFLOP/s</title></circle>
+<circle cx="567.5" cy="1041.8" r="4" fill="#16a34a"><title>1.502 TFLOP/s</title></circle>
+<circle cx="801.2" cy="1018.3" r="4" fill="#16a34a"><title>2.964 TFLOP/s</title></circle>
+<circle cx="1035.0" cy="972.1" r="4" fill="#16a34a"><title>5.829 TFLOP/s</title></circle>
+<text x="567.5" y="1102" text-anchor="middle" class="small">Batch size M (log₂ spacing)</text>
+</svg>

@@ -67,60 +67,38 @@ Validation on the RTX 3050: both extensions rebuilt successfully, and `conda run
 
 ## Benchmark
 
-Run the default benchmark from the root and save both its machine-readable rows and console environment header:
+Run the three-backend benchmark from the repository root:
 
-```bash
-mkdir -p benchmarks/results
-python benchmarks/bench_gemm.py --peak-bw 168 --md --json benchmarks/results/current-run.json | tee benchmarks/results/current-run.log
-```
+    python benchmarks/bench_gemm.py --md
 
-It compares the W4A16 extension with fp16 `torch.nn.functional.linear` over the Llama 3 8B projection dimensions, with `M` in `{1, 2, 4, 8, 16}` and group size 128. Timings use CUDA graphs. The default cycles through at least 128 MiB of packed weights (up to 64 copies). Each run saves its rows as JSON under `benchmarks/results/`. Choose a path with `--json path/to/results.json`.
+The default run compares PyTorch fp16 linear, the CUDA W4A16 extension, and the Triton W4A16 kernel across the four Llama 3 8B projection shapes and M in {1, 2, 4, 8, 16}. Both W4 kernels use the same quantized weights, converted to the layout each kernel expects. Timings use CUDA graphs and cycle through a 128 MiB weight working set, with 30 repetitions.
 
-`--peak-bw` sets the denominator for the reported percentage and ideal-time estimate. Use 168 for the RTX 3050 tested here; use the appropriate value for another GPU.
+Each run writes a timestamped JSON result and an SVG graph under benchmarks/results. The graph plots TFLOP/s against batch size for all three backends, with one panel per projection. TFLOP/s uses 2*M*N*K / elapsed_time. Pass --json path.json and --plot path.svg to choose output paths.
 
-Other shapes and batches can be selected, for example:
+Use --shape N,K (repeatable), --M, --G, --target-mb, and --reps to change the run:
 
-```bash
-python benchmarks/bench_gemm.py --shape 4096,4096 --shape 8192,4096 --M 1,4,16 --G 64,128 --md
-```
+    python benchmarks/bench_gemm.py --shape 4096,4096 --shape 8192,4096 --M 1,4,16,64,256 --G 64 --reps 50 --md
 
-### Prefill benchmark
+The Triton launcher is also exposed as a Python function:
 
-```bash
-python benchmarks/bench_gemm.py --prefill --md --json benchmarks/results/prefill-run.json
-python benchmarks/bench_gemm.py --shape 4096,4096 --M 17,48,100,256 --variant 2 --md   # compare cfgs: --variant 1..4
-```
+    from w4a16_triton import quantize_w4, w4a16_gemm
 
-Prefill is mostly compute-bound, so read the TFLOP/s columns and the speedup against fp16 `linear`; the GB/s and `% roofline` columns model decode traffic and are not meaningful there.
+    weights = quantize_w4(W, G=128)
+    y = w4a16_gemm(x, weights)
 
-The full RTX 3050 prefill sweep covers M={17,32,48,64,100,128,256,512,1024,2048,4096} for qkv, o, gate_up, and down projections. It uses CUDA graph timing, a 128 MiB weight working set, and 30 repetitions. Auto was within 3% of the best forced config in 40/44 rows (worst gap 7.1%). The forced and auto row data are saved in [`sweep-cfg1.json`](benchmarks/results/sweep-cfg1.json), [`sweep-cfg2.json`](benchmarks/results/sweep-cfg2.json), [`sweep-cfg3.json`](benchmarks/results/sweep-cfg3.json), [`sweep-cfg4.json`](benchmarks/results/sweep-cfg4.json), and [`sweep-auto.json`](benchmarks/results/sweep-auto.json). Compare the per-row `w4_us` values when evaluating a routing change. The GB/s and `% roofline` fields model decode traffic and do not estimate prefill DRAM bandwidth.
+The Triton function expects fp16 CUDA activations and a W4Weights value returned by quantize_w4. Its packed-weight format differs from the CUDA extension format, so use the Triton quantizer with the Triton entry point.
 
-### Diagnostic runs
+### Three-backend RTX 3050 run
 
-Compare output-grid sizes while keeping the weight element count constant (16,777,216 elements in each case). This helps check whether a small number of CTAs limits the smaller-N cases:
+The measured run is saved as [JSON results](benchmarks/results/three-backend-rtx3050-20261025.json), with its [TFLOP/s graph](benchmarks/results/three-backend-rtx3050-20261025.svg). It contains 20 rows across four projection shapes and M in {1, 2, 4, 8, 16}. Across those rows, measured throughput ranged from 0.12 to 2.54 TFLOP/s for PyTorch fp16, 0.57 to 9.34 TFLOP/s for CUDA W4A16, and 0.37 to 6.66 TFLOP/s for Triton W4A16.
 
-```bash
-python benchmarks/bench_gemm.py --shape 2048,8192 --shape 4096,4096 --shape 8192,2048 --M 8 --G 128 --target-mb 128 --reps 50 --md
-```
+![TFLOP/s comparison across PyTorch, CUDA, and Triton](benchmarks/results/three-backend-rtx3050-20261025.svg)
 
-Compare one packed-weight copy with a larger weight working set for a large layer:
+### Previously recorded CUDA benchmark
 
-```bash
-python benchmarks/bench_gemm.py --shape 28672,4096 --M 8 --target-mb 1 --reps 50 --md
-python benchmarks/bench_gemm.py --shape 28672,4096 --M 8 --target-mb 128 --reps 50 --md
-```
+The results below predate the Triton integration and compare the CUDA extension with fp16 linear; they are historical CUDA measurements.
 
-For this shape, even one packed-weight copy is about 56 MiB, far larger than the laptop GPU's 2 MiB L2 cache. So `--target-mb 1` does **not** make it a hot-cache run; it only reduces the number of distinct copies from three to one. Use hardware counters to determine DRAM traffic. These timing comparisons can show working-set and grid-size effects, but they cannot establish measured bandwidth by themselves.
-
-### Diagnostic results
-
-- For `N=28672, K=4096, M=8`, one weight copy measured 387.1 µs; three copies measured 386.7 µs. Since even one copy is much larger than L2, these runs do not indicate cache residency. The per-call time is essentially unchanged as the copied working set grows from about 56 MiB to 168 MiB.
-- With the weight element count held constant, the 32-, 64-, and 128-CTA cases measured 59.3, 63.2, and 58.0 µs. This is not a monotonic improvement with CTA count. K changes between these shapes too, so the sweep does not isolate grid size as the cause.
-- Nsight Compute could not collect counters on this machine: it returned `ERR_NVGPUCTRPERM`, and administrator access was unavailable. There is no counter-based occupancy, DRAM throughput, or warp-stall result yet.
-
-## Recorded benchmark
-
-The fresh full run at [`benchmarks/results/baseline-rtx3050-168gbps.json`](benchmarks/results/baseline-rtx3050-168gbps.json) contains 20 rows: four projection dimensions and five batch sizes. After the prefill changes, a decode recheck at [`decode-recheck.json`](benchmarks/results/decode-recheck.json) stayed within 0.44% of that baseline in every row. Values below summarize the baseline run; latency is the measured W4A16 range, speedup compares against fp16 `linear`, and bandwidth is estimated from the benchmark's modeled traffic and latency.
+The historical full run at [`benchmarks/results/baseline-rtx3050-168gbps.json`](benchmarks/results/baseline-rtx3050-168gbps.json) contains 20 rows: four projection dimensions and five batch sizes. After the prefill changes, a decode recheck at [`decode-recheck.json`](benchmarks/results/decode-recheck.json) stayed within 0.44% of that baseline in every row. Values below summarize the baseline run; latency is the measured W4A16 range, speedup compares against fp16 `linear`, and bandwidth is estimated from the benchmark's modeled traffic and latency.
 
 | Projection | N × K | W4A16 latency (µs) | Speedup |
 |---|---:|---:|---:|
@@ -138,9 +116,9 @@ Modeled bandwidth is shown separately so both tables remain readable:
 | gate_up | 152.6–161.5 | 90.8–96.1% |
 | down | 136.6–153.0 | 81.3–91.1% |
 
-Bandwidth is modeled bytes divided by elapsed time, not a hardware DRAM counter. `nvidia-smi` on this laptop reports a maximum memory clock of 7001 MHz. With its 96-bit memory interface and GDDR6's double data rate, that gives about 168 GB/s theoretical peak. The highest modeled value here, 161.5 GB/s, is about 96% of peak. The older checked-in JSON used `--peak-bw 144`, so its `pct_peak` field is relative to 144 GB/s, not the theoretical peak; the fresh run uses `--peak-bw 168`.
+Bandwidth is modeled bytes divided by elapsed time, not a hardware DRAM counter. `nvidia-smi` on this laptop reports a maximum memory clock of 7001 MHz. With its 96-bit memory interface and GDDR6's double data rate, that gives about 168 GB/s theoretical peak. The highest modeled value here, 161.5 GB/s, is about 96% of peak. The older checked-in JSON used `--peak-bw 144`, so its `pct_peak` field is relative to 144 GB/s, not the theoretical peak; that baseline run used `--peak-bw 168`.
 
-The benchmark prints the GPU, CUDA runtime, PyTorch version, and device details before the table. The fresh JSON stores per-row results; its environment is recorded above. The PyTorch/CUDA wheel combination follows [PyTorch's official installation instructions](https://pytorch.org/get-started/previous-versions/).
+These archived values come from a prior CUDA-only benchmark run. The PyTorch/CUDA wheel combination follows [PyTorch's official installation instructions](https://pytorch.org/get-started/previous-versions/).
 
 ## Repository files
 
@@ -150,6 +128,7 @@ The benchmark prints the GPU, CUDA runtime, PyTorch version, and device details 
 - `src/vectorized/common.cuh` — shared PTX helpers and the dequant routine.
 - `tools/compile_check.cu` — torch-free instantiation of every kernel config.
 - `src/baseline/kernel.cu` — baseline CUDA kernel.
+- `triton/kernel.py` and `w4a16_triton.py` — Triton implementation and Python entry point.
 - `src/*/extension.cpp` — PyTorch extension bindings.
 - `tests/` — correctness and packing tests.
 - `benchmarks/` — benchmark scripts and saved JSON results.

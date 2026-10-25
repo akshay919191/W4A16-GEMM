@@ -89,6 +89,7 @@ weights/
 !benchmarks/results/decode-recheck.json
 !benchmarks/results/sweep-cfg*.json
 !benchmarks/results/sweep-auto.json
+!benchmarks/results/three-backend-*.json
 
 # ---- Editors / OS ----
 .vscode/
