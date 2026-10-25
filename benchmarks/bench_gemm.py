@@ -112,7 +112,7 @@ def load_weights(N, K, G, target_mb, device):
 
 def write_tflops_svg(path, rows, gpu_name):
     layers = list(dict.fromkeys(row["layer"] for row in rows))
-    largest_m = max(row["M"] for row in rows)
+    batch_sizes = sorted({row["M"] for row in rows})[-2:]
     columns = 2
     panel_width, panel_height = 540, 330
     top = 112
@@ -124,7 +124,7 @@ def write_tflops_svg(path, rows, gpu_name):
         '<rect width="100%" height="100%" fill="white"/>',
         '<style>text{font-family:Arial,Helvetica,sans-serif;fill:#1f2937}.small{font-size:12px}.title{font-size:22px;font-weight:bold}.panel{font-size:15px;font-weight:bold}.value{font-size:12px;font-weight:bold}</style>',
         '<text x="36" y="34" class="title">W4A16 GEMM — grouped TFLOP/s</text>',
-        f'<text x="36" y="56" class="small">{html.escape(gpu_name)} · largest measured batch M={largest_m} · 2MNK / elapsed time</text>',
+        f'<text x="36" y="56" class="small">{html.escape(gpu_name)} · largest measured batches M={", ".join(map(str, batch_sizes))} · 2MNK / elapsed time</text>',
     ]
     legend_x = 36
     for label, _, color in BACKENDS:
@@ -135,15 +135,19 @@ def write_tflops_svg(path, rows, gpu_name):
     for panel_index, layer in enumerate(layers):
         x0 = (panel_index % columns) * panel_width
         y0 = top + (panel_index // columns) * panel_height
-        data = next(row for row in rows if row["layer"] == layer and row["M"] == largest_m)
+        data_by_m = {
+            m: next(row for row in rows if row["layer"] == layer and row["M"] == m)
+            for m in batch_sizes
+        }
+        shape = next(row for row in rows if row["layer"] == layer)
         plot_left = x0 + 78
         plot_right = x0 + panel_width - 28
         plot_top = y0 + 54
         plot_bottom = y0 + 258
         plot_height = plot_bottom - plot_top
-        max_value = max(data[key] for _, key, _ in BACKENDS)
+        max_value = max(data[key] for data in data_by_m.values() for _, key, _ in BACKENDS)
         y_max = max(1.0, max_value * 1.15)
-        svg.append(f'<text x="{x0 + 22}" y="{y0 + 25}" class="panel">{html.escape(layer)}  (N×K = {data["N"]}×{data["K"]})</text>')
+        svg.append(f'<text x="{x0 + 22}" y="{y0 + 25}" class="panel">{html.escape(layer)}  (N×K = {shape["N"]}×{shape["K"]})</text>')
         svg.append(f'<line x1="{plot_left}" y1="{plot_top}" x2="{plot_left}" y2="{plot_bottom}" stroke="#374151"/>')
         svg.append(f'<line x1="{plot_left}" y1="{plot_bottom}" x2="{plot_right}" y2="{plot_bottom}" stroke="#374151"/>')
         svg.append(f'<text x="{x0 + 26}" y="{plot_top + plot_height / 2}" class="small" transform="rotate(-90 {x0 + 26} {plot_top + plot_height / 2})">TFLOP/s</text>')
@@ -153,20 +157,24 @@ def write_tflops_svg(path, rows, gpu_name):
             svg.append(f'<line x1="{plot_left}" y1="{y:.1f}" x2="{plot_right}" y2="{y:.1f}" stroke="#e5e7eb"/>')
             svg.append(f'<text x="{plot_left - 10}" y="{y + 4:.1f}" text-anchor="end" class="small">{value:.1f}</text>')
 
-        bar_width = 72
-        bar_gap = 34
-        total_width = len(BACKENDS) * bar_width + (len(BACKENDS) - 1) * bar_gap
-        bar_x = plot_left + (plot_right - plot_left - total_width) / 2
-        for index, (label, key, color) in enumerate(BACKENDS):
-            value = data[key]
-            bar_height = value / y_max * plot_height
-            x = bar_x + index * (bar_width + bar_gap)
-            y = plot_bottom - bar_height
-            svg.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width}" height="{bar_height:.1f}" rx="3" fill="{color}"/>')
-            svg.append(f'<text x="{x + bar_width / 2:.1f}" y="{y - 7:.1f}" text-anchor="middle" class="value">{value:.2f}</text>')
-            short_label = label.split()[0]
-            svg.append(f'<text x="{x + bar_width / 2:.1f}" y="{plot_bottom + 20}" text-anchor="middle" class="small">{html.escape(short_label)}</text>')
-        svg.append(f'<text x="{(plot_left + plot_right) / 2:.1f}" y="{plot_bottom + 43}" text-anchor="middle" class="small">M = {largest_m}</text>')
+        bar_width = 42
+        bar_gap = 7
+        group_gap = 32
+        group_width = len(BACKENDS) * bar_width + (len(BACKENDS) - 1) * bar_gap
+        total_width = len(batch_sizes) * group_width + (len(batch_sizes) - 1) * group_gap
+        group_x = plot_left + (plot_right - plot_left - total_width) / 2
+        for m in batch_sizes:
+            data = data_by_m[m]
+            for index, (_, key, color) in enumerate(BACKENDS):
+                value = data[key]
+                bar_height = value / y_max * plot_height
+                x = group_x + index * (bar_width + bar_gap)
+                y = plot_bottom - bar_height
+                svg.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width}" height="{bar_height:.1f}" rx="2" fill="{color}"/>')
+                svg.append(f'<text x="{x + bar_width / 2:.1f}" y="{y - 7:.1f}" text-anchor="middle" class="value">{value:.1f}</text>')
+            svg.append(f'<text x="{group_x + group_width / 2:.1f}" y="{plot_bottom + 20}" text-anchor="middle" class="small">M={m}</text>')
+            group_x += group_width + group_gap
+        svg.append(f'<text x="{(plot_left + plot_right) / 2:.1f}" y="{plot_bottom + 43}" text-anchor="middle" class="small">Batch size</text>')
 
     svg.append("</svg>")
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -191,7 +199,7 @@ def main():
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
     json_path = args.json or os.path.join(results_dir, f"three-backend-{stamp}.json")
-    plot_path = args.plot or os.path.splitext(json_path)[0] + ".svg"
+    plot_path = args.plot or os.path.splitext(json_path)[0] + "-grouped.svg"
     shapes = (
         [(f"{int(n)}x{int(k)}", (int(n), int(k))) for n, k in (value.split(",") for value in args.shape)]
         if args.shape
