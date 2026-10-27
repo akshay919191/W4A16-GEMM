@@ -67,17 +67,34 @@ Validation on the RTX 3050: both extensions rebuilt successfully, and `conda run
 
 ## Benchmark
 
-Run the three-backend benchmark from the repository root:
+The benchmark compares the CUDA W4A16 extension, Triton W4A16, and Marlin W4A16. It uses one quantized weight matrix for all three kernels and converts it to each kernel's packed layout. The full precision PyTorch baseline is no longer part of the benchmark.
 
-    conda run -n akku python benchmarks/bench_gemm.py --md
+Install Marlin in the same Conda environment as PyTorch. For the tested CUDA 11.8 / sm_86 setup:
 
-The default run compares PyTorch fp16 linear, the CUDA W4A16 extension, and the Triton W4A16 kernel across the four Llama 3 8B projection shapes and M in {1, 2, 4, 8, 16}. Both W4 kernels use the same quantized weights, converted to the layout each kernel expects. Timings use CUDA graphs and cycle through a 128 MiB weight working set, with 30 repetitions.
+```bash
+git clone https://github.com/IST-DASLab/marlin.git /tmp/marlin
+export CUDA_HOME=/usr/local/cuda-11.8
+export PATH="$CUDA_HOME/bin:$PATH"
+export TORCH_CUDA_ARCH_LIST=8.6
+conda run -n akku python -m pip install --no-build-isolation /tmp/marlin
+```
 
-Each run writes timestamped JSON results and a PNG graph under benchmarks/results. The graph has four panels, one per projection, with grouped PyTorch, CUDA, and Triton bars for the three largest requested batch sizes. The saved run shows M=4, 8, and 16. TFLOP/s uses 2*M*N*K / elapsed_time. Pass --json path.json and --plot path.png to choose output paths.
+Run the complete benchmark from the repository root:
 
-Use --shape N,K (repeatable), --M, --G, --target-mb, and --reps to change the run:
+```bash
+conda run -n akku python benchmarks/bench_gemm.py --md
+```
 
-    conda run -n akku python benchmarks/bench_gemm.py --shape 4096,4096 --shape 8192,4096 --M 1,4,16,64,256 --G 64 --reps 50 --md
+By default, it measures all four Llama 3 8B projection shapes in both phases. Prefill sequence lengths are M = 128, 512, 1,024, 2,048, 4,096, and 8,192. Decode batch sizes are M = 1, 2, 4, 8, 16, and 32. The benchmark uses CUDA graphs, a 128 MiB weight working set per backend, and 30 repetitions. Marlin requires group size 128, N divisible by 256, and K divisible by 128; use `--no-marlin` to compare only the local CUDA and Triton kernels.
+
+Each run writes timestamped JSON results and a grouped PNG under `benchmarks/results`. The chart separates prefill and decode and shows the three largest requested M values for each projection. JSON rows include median and minimum latency plus TFLOP/s. Pass `--json path.json` and `--plot path.png` to set output paths.
+
+Choose a phase and customize the shapes or M values with `--phase`, `--shape N,K` (repeatable), `--prefill-M`, `--decode-M`, `--G`, `--target-mb`, and `--reps`:
+
+```bash
+conda run -n akku python benchmarks/bench_gemm.py \
+  --shape 4096,4096 --phase both --prefill-M 4096,8192 --decode-M 1,8 --reps 30 --md
+```
 
 The Triton launcher is also exposed as a Python function:
 
@@ -87,12 +104,6 @@ The Triton launcher is also exposed as a Python function:
     y = w4a16_gemm(x, weights)
 
 The Triton function expects fp16 CUDA activations and a W4Weights value returned by quantize_w4. Its packed-weight format differs from the CUDA extension format, so use the Triton quantizer with the Triton entry point.
-
-### Three-backend RTX 3050 run
-
-The measured run is saved as [JSON results](benchmarks/results/three-backend-rtx3050-20261025.json), with its [TFLOP/s graph](benchmarks/results/three-backend-rtx3050-20261025-grouped.png). It contains 20 rows across four projection shapes and M in {1, 2, 4, 8, 16}. Across those rows, measured throughput ranged from 0.12 to 2.54 TFLOP/s for PyTorch fp16, 0.57 to 9.34 TFLOP/s for CUDA W4A16, and 0.37 to 6.66 TFLOP/s for Triton W4A16.
-
-![TFLOP/s comparison across PyTorch, CUDA, and Triton](benchmarks/results/three-backend-rtx3050-20261025-grouped.png)
 
 ### Previously recorded CUDA benchmark
 
