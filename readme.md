@@ -82,12 +82,14 @@ conda run -n akku python -m pip install --no-build-isolation /tmp/marlin
 Run the complete benchmark from the repository root:
 
 ```bash
-conda run -n akku python benchmarks/bench_gemm.py --md
+conda run -n akku python benchmarks/bench_gemm.py --md \
+  --json benchmarks/results/latest.json \
+  --plot benchmarks/results/latest-grouped.png
 ```
 
 By default, it measures all four Llama 3 8B projection shapes in both phases. Prefill sequence lengths are M = 128, 512, 1,024, 2,048, 4,096, and 8,192. Decode batch sizes are M = 1, 2, 4, 8, 16, and 32. The benchmark uses CUDA graphs, a 128 MiB weight working set per backend, and 30 repetitions. Marlin requires group size 128, N divisible by 256, and K divisible by 128; use `--no-marlin` to compare only the local CUDA and Triton kernels.
 
-Each run writes timestamped JSON results and a grouped PNG under `benchmarks/results`. The chart separates prefill and decode and shows the three largest requested M values for each projection. JSON rows include median and minimum latency plus TFLOP/s. Pass `--json path.json` and `--plot path.png` to set output paths.
+The chart separates prefill and decode and shows the three largest requested M values for each projection. JSON rows include median and minimum latency plus TFLOP/s. The command above overwrites the stable `latest.json` and `latest-grouped.png` files used below; omit the output arguments or choose other paths to keep separate runs.
 
 Choose a phase and customize the shapes or M values with `--phase`, `--shape N,K` (repeatable), `--prefill-M`, `--decode-M`, `--G`, `--target-mb`, and `--reps`:
 
@@ -105,31 +107,11 @@ The Triton launcher is also exposed as a Python function:
 
 The Triton function expects fp16 CUDA activations and a W4Weights value returned by quantize_w4. Its packed-weight format differs from the CUDA extension format, so use the Triton quantizer with the Triton entry point.
 
-### Previously recorded CUDA benchmark
+### Latest RTX 3050 comparison
 
-The results below predate the Triton integration and compare the CUDA extension with fp16 linear; they are historical CUDA measurements.
+This 48-row run was measured on 2026-10-27 with CUDA 11.8, group size 128, and Marlin 0.1.1. It covers all four projection shapes, prefill lengths through 8,192, and decode batches through 32. The chart compares median TFLOP/s for each backend; the [JSON file](benchmarks/results/latest.json) contains the latency and throughput measurements.
 
-The historical full run at [`benchmarks/results/baseline-rtx3050-168gbps.json`](benchmarks/results/baseline-rtx3050-168gbps.json) contains 20 rows: four projection dimensions and five batch sizes. After the prefill changes, a decode recheck at [`decode-recheck.json`](benchmarks/results/decode-recheck.json) stayed within 0.44% of that baseline in every row. Values below summarize the baseline run; latency is the measured W4A16 range, speedup compares against fp16 `linear`, and bandwidth is estimated from the benchmark's modeled traffic and latency.
-
-| Projection | N × K | W4A16 latency (µs) | Speedup |
-|---|---:|---:|---:|
-| qkv | 6144 × 4096 | 83.6–95.5 | 3.64–3.98× |
-| o | 4096 × 4096 | 58.6–70.0 | 3.02–3.91× |
-| gate_up | 28672 × 4096 | 375.4–403.6 | 3.67–3.84× |
-| down | 4096 × 14336 | 198.2–225.9 | 3.56–4.00× |
-
-Modeled bandwidth is shown separately so both tables remain readable:
-
-| Projection | Modeled bandwidth (GB/s) | Of 168 GB/s peak |
-|---|---:|---:|
-| qkv | 139.3–155.5 | 82.9–92.6% |
-| o | 127.3–147.8 | 75.8–88.0% |
-| gate_up | 152.6–161.5 | 90.8–96.1% |
-| down | 136.6–153.0 | 81.3–91.1% |
-
-Bandwidth is modeled bytes divided by elapsed time, not a hardware DRAM counter. `nvidia-smi` on this laptop reports a maximum memory clock of 7001 MHz. With its 96-bit memory interface and GDDR6's double data rate, that gives about 168 GB/s theoretical peak. The highest modeled value here, 161.5 GB/s, is about 96% of peak. The older checked-in JSON used `--peak-bw 144`, so its `pct_peak` field is relative to 144 GB/s, not the theoretical peak; that baseline run used `--peak-bw 168`.
-
-These archived values come from a prior CUDA-only benchmark run. The PyTorch/CUDA wheel combination follows [PyTorch's official installation instructions](https://pytorch.org/get-started/previous-versions/).
+![Grouped CUDA, Triton, and Marlin W4A16 throughput for prefill and decode](benchmarks/results/latest-grouped.png)
 
 ## Repository files
 
@@ -142,4 +124,4 @@ These archived values come from a prior CUDA-only benchmark run. The PyTorch/CUD
 - `triton/kernel.py` and `w4a16_triton.py` — Triton implementation and Python entry point.
 - `src/*/extension.cpp` — PyTorch extension bindings.
 - `tests/` — correctness and packing tests.
-- `benchmarks/` — benchmark scripts and saved JSON results.
+- `benchmarks/` — benchmark scripts, latest JSON measurements, and comparison chart.

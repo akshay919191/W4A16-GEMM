@@ -83,13 +83,7 @@ weights/
 # Generated benchmark exports; keep the result documented in readme.md.
 *.csv
 *.json
-!benchmarks/results/bench-20261021-182748.json
-!benchmarks/results/baseline-rtx3050-168gbps.json
-!benchmarks/results/prefill-*-rtx3050.json
-!benchmarks/results/decode-recheck.json
-!benchmarks/results/sweep-cfg*.json
-!benchmarks/results/sweep-auto.json
-!benchmarks/results/three-backend-*.json
+!benchmarks/results/latest.json
 
 # ---- Editors / OS ----
 .vscode/
